@@ -1,0 +1,10 @@
+[package]
+name = "webizen-host-qcdn"
+version.workspace = true
+edition.workspace = true
+authors.workspace = true
+license.workspace = true
+description = "WP-06: Three-Layer User-Powered Decentralized CDN (Q-CDN), Signed Root Index, Peer Swarm Verification, and HTTP 307 Offload"
+
+[dependencies]
+webizen-host-core = { workspace = true }

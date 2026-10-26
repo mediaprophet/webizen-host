@@ -1,0 +1,11 @@
+[package]
+name = "webizen-host-namespace"
+version.workspace = true
+edition.workspace = true
+authors.workspace = true
+license.workspace = true
+description = "WP-02: Zero-alloc content-negotiated Virtual Namespace Server (ns.webcivics.net v2) & Hard Egress Circuit Breaker"
+
+[dependencies]
+webizen-host-core = { workspace = true }
+webizen-host-ingest = { workspace = true }

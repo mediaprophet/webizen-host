@@ -1,0 +1,9 @@
+[package]
+name = "webizen-host-core"
+version.workspace = true
+edition.workspace = true
+authors.workspace = true
+license.workspace = true
+description = "Foundational 48-byte NQuin ABI, FNV-1a q_hash(), Human-Centric nomenclature & SHACL-first non-Thing invariants for webizen-host"
+
+[dependencies]

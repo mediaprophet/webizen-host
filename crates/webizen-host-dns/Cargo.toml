@@ -1,0 +1,10 @@
+[package]
+name = "webizen-host-dns"
+version.workspace = true
+edition.workspace = true
+authors.workspace = true
+license.workspace = true
+description = "WP-03: O(1) q_hash() 48-byte NQuin DNS zone ring, QPolicy split-horizon deontic firewall, Dual-Stack QDNF, and CSCP-08/09 qualification"
+
+[dependencies]
+webizen-host-core = { workspace = true }

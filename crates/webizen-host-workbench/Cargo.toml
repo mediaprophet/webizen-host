@@ -1,0 +1,17 @@
+[package]
+name = "webizen-host-workbench"
+version.workspace = true
+edition.workspace = true
+authors.workspace = true
+license.workspace = true
+description = "WP-08: Human-Centric Poet Host Admin Workbench (Six Life Domains, Relationship-Scoped Mail, cPanel Parity) & Turnkey Linux VPS Installer"
+
+[dependencies]
+webizen-host-core = { workspace = true }
+webizen-host-ingest = { workspace = true }
+webizen-host-namespace = { workspace = true }
+webizen-host-dns = { workspace = true }
+webizen-host-sandbox = { workspace = true }
+webizen-host-stewardship = { workspace = true }
+webizen-host-qcdn = { workspace = true }
+webizen-host-economics = { workspace = true }

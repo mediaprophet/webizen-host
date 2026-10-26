@@ -1,0 +1,10 @@
+[package]
+name = "webizen-host-stewardship"
+version.workspace = true
+edition.workspace = true
+authors.workspace = true
+license.workspace = true
+description = "WP-05: Who-Plane (NaturalAgent) != Handle-Plane (DNS), Collapse Detector, Church & State Vault Separation, and Person/Family/Cooperative/Agent Stewardship"
+
+[dependencies]
+webizen-host-core = { workspace = true }

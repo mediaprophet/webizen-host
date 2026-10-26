@@ -1,0 +1,10 @@
+[package]
+name = "webizen-host-economics"
+version.workspace = true
+edition.workspace = true
+authors.workspace = true
+license.workspace = true
+description = "WP-07: Permissive Commons 10x Sunset, Multi-Blockchain Settlement Router, Multi-Exchange Coin Swap Hub, and Energy-Cheap Post-Quantum Native Ledger"
+
+[dependencies]
+webizen-host-core = { workspace = true }

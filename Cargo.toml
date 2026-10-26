@@ -1,0 +1,30 @@
+[workspace]
+members = [
+    "crates/webizen-host-core",
+    "crates/webizen-host-ingest",
+    "crates/webizen-host-namespace",
+    "crates/webizen-host-dns",
+    "crates/webizen-host-sandbox",
+    "crates/webizen-host-stewardship",
+    "crates/webizen-host-qcdn",
+    "crates/webizen-host-economics",
+    "crates/webizen-host-workbench",
+]
+resolver = "2"
+
+[workspace.package]
+version = "0.0.40"
+edition = "2021"
+authors = ["Timothy Charles Holborn <timothy.holborn@gmail.com>"]
+license = "CC-BY-NC-ND-4.0"
+
+[workspace.dependencies]
+webizen-host-core = { path = "crates/webizen-host-core" }
+webizen-host-ingest = { path = "crates/webizen-host-ingest" }
+webizen-host-namespace = { path = "crates/webizen-host-namespace" }
+webizen-host-dns = { path = "crates/webizen-host-dns" }
+webizen-host-sandbox = { path = "crates/webizen-host-sandbox" }
+webizen-host-stewardship = { path = "crates/webizen-host-stewardship" }
+webizen-host-qcdn = { path = "crates/webizen-host-qcdn" }
+webizen-host-economics = { path = "crates/webizen-host-economics" }
+webizen-host-workbench = { path = "crates/webizen-host-workbench" }

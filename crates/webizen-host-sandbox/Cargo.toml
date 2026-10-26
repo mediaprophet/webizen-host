@@ -1,0 +1,10 @@
+[package]
+name = "webizen-host-sandbox"
+version.workspace = true
+edition.workspace = true
+authors.workspace = true
+license.workspace = true
+description = "WP-04: Three-Tier Multi-Tenant Sandbox (VibeScript VBC1 + 42 MiB SlgArena, WASM QApps SDK-01..10, W3C Solid LDP Bridge + eBPF) & Native App Runtime"
+
+[dependencies]
+webizen-host-core = { workspace = true }

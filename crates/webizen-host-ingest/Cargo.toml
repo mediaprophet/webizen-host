@@ -1,0 +1,10 @@
+[package]
+name = "webizen-host-ingest"
+version.workspace = true
+edition.workspace = true
+authors.workspace = true
+license.workspace = true
+description = "WP-01: Tier-2 ColdBounded (>100 MB WebCivics/ns) streaming ontology compiler, Q42LEX v4 interning, SHACL-first non-Thing uplift, and .q42 v4 / QBDL .hmc packaging"
+
+[dependencies]
+webizen-host-core = { workspace = true }
