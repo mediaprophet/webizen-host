@@ -59,7 +59,9 @@ impl VibeWebServerEngine {
     /// Verify that an HTML document contains **zero executable JavaScript** (`<script>`,
     /// `text/javascript`, `onclick=`, `onchange=`, `oninput=`) and instead uses pure CSS state
     /// machines + `<script type="application/vibescript">`.
-    pub fn verify_zero_javascript_html(html: &str) -> Result<ZeroJavaScriptAuditReceipt, &'static str> {
+    pub fn verify_zero_javascript_html(
+        html: &str,
+    ) -> Result<ZeroJavaScriptAuditReceipt, &'static str> {
         validate_human_centric_nomenclature(html)?;
         let lower = html.to_ascii_lowercase();
 
@@ -104,8 +106,9 @@ impl VibeWebServerEngine {
         Some(html[after_open..end_tag].trim())
     }
 
-    /// Execute a VibeScript (`VBC1`) web-server route for the 10-page Control Panel and return
-    /// a `VibeHttpResponse` protected by `STRICT_ZERO_JS_CSP`.
+    /// Execute a VibeScript (`VBC1`) web-server route for the 10-page Control Panel by running
+    /// `render_route(persona, page)` in the real `vibe` interpreter via `Tier1VibeCell::execute_vibe_function`
+    /// and returning a `VibeHttpResponse` protected by `STRICT_ZERO_JS_CSP`.
     pub fn serve_control_panel_route(
         &self,
         persona: UserPersonaTier,
@@ -115,17 +118,35 @@ impl VibeWebServerEngine {
         if audit.embedded_vibescript_modules == 0 {
             return Err("Bundled workbench HTML must contain at least one <script type=\"application/vibescript\"> module");
         }
+        let vibe_src = Self::extract_embedded_vibescript(BUNDLED_ADAPTIVE_WORKBENCH_HTML)
+            .ok_or("Missing embedded <script type=\"application/vibescript\"> module")?;
 
-        // Execute deterministic VBC1 route bytecode inside the Tier-1 VibeScript cell
-        let _route_hash = q_hash(persona.label()) ^ q_hash(page.sidebar_title());
+        let persona_key = match persona {
+            UserPersonaTier::Novice => "novice",
+            UserPersonaTier::TechGeek => "geek",
+            UserPersonaTier::Developer => "dev",
+        };
+
         let mut cell = Tier1VibeCell::new(
             "cpanel-vibe-route",
             self.max_vbc1_cycles_per_request,
             VibeEffectLevel::Pure,
             &[CapabilityFamily::GraphDatabase],
         );
-        cell.execute_vbc1_step(4, VibeEffectLevel::Pure, None, 256)
-            .map_err(|_| "VBC1 route execution exceeded cycle budget")?;
+        let route_val = cell
+            .execute_vibe_function(
+                vibe_src,
+                "render_route",
+                vec![
+                    vibe::Value::String(persona_key.to_string()),
+                    vibe::Value::String(page.sidebar_title().to_string()),
+                ],
+            )
+            .map_err(|_| "VibeScript render_route execution failed or exceeded cycle budget")?;
+
+        if !matches!(route_val, vibe::Value::Record(_)) {
+            return Err("VibeScript render_route must return a Record value");
+        }
 
         Ok(VibeHttpResponse {
             status_code: 200,
@@ -135,6 +156,64 @@ impl VibeWebServerEngine {
             vbc1_cycles_consumed: cell.cycles_used,
             body: BUNDLED_ADAPTIVE_WORKBENCH_HTML.to_string(),
         })
+    }
+
+    /// Evaluate `verify_relationship_mail(alias, sender, allowed)` from the embedded
+    /// `<script type="application/vibescript">` module in the real `vibe` engine.
+    pub fn evaluate_mail_via_vibescript(
+        &self,
+        alias: &str,
+        sender: &str,
+        allowed: &str,
+    ) -> Result<vibe::Value, &'static str> {
+        let vibe_src = Self::extract_embedded_vibescript(BUNDLED_ADAPTIVE_WORKBENCH_HTML)
+            .ok_or("Missing embedded <script type=\"application/vibescript\"> module")?;
+        let mut cell = Tier1VibeCell::new(
+            "cpanel-mail-vibe-gate",
+            self.max_vbc1_cycles_per_request,
+            VibeEffectLevel::Pure,
+            &[CapabilityFamily::DeonticLogic],
+        );
+        cell.execute_vibe_function(
+            vibe_src,
+            "verify_relationship_mail",
+            vec![
+                vibe::Value::String(alias.to_string()),
+                vibe::Value::String(sender.to_string()),
+                vibe::Value::String(allowed.to_string()),
+            ],
+        )
+        .map_err(|_| "VibeScript verify_relationship_mail execution failed")
+    }
+
+    /// Evaluate `check_peer_resource_permit(priority_tier, host_util_pct, req_units, quota)` from
+    /// the embedded `<script type="application/vibescript">` module in the real `vibe` engine.
+    pub fn evaluate_permit_via_vibescript(
+        &self,
+        priority_tier: i64,
+        host_util_pct: i64,
+        req_units: i64,
+        quota: i64,
+    ) -> Result<vibe::Value, &'static str> {
+        let vibe_src = Self::extract_embedded_vibescript(BUNDLED_ADAPTIVE_WORKBENCH_HTML)
+            .ok_or("Missing embedded <script type=\"application/vibescript\"> module")?;
+        let mut cell = Tier1VibeCell::new(
+            "cpanel-permit-vibe-gate",
+            self.max_vbc1_cycles_per_request,
+            VibeEffectLevel::Pure,
+            &[CapabilityFamily::DeonticLogic],
+        );
+        cell.execute_vibe_function(
+            vibe_src,
+            "check_peer_resource_permit",
+            vec![
+                vibe::Value::I64(priority_tier),
+                vibe::Value::I64(host_util_pct),
+                vibe::Value::I64(req_units),
+                vibe::Value::I64(quota),
+            ],
+        )
+        .map_err(|_| "VibeScript check_peer_resource_permit execution failed")
     }
 
     /// Execute a VibeScript (`VBC1`) route that returns a native W3C CBOR-LD (`application/cbor-ld`,
@@ -217,9 +296,29 @@ mod tests {
             .unwrap();
         assert_eq!(resp.status_code, 200);
         assert!(resp.content_security_policy.contains("script-src 'none'"));
-        assert_eq!(resp.vbc1_cycles_consumed, 4);
+        assert!(resp.vbc1_cycles_consumed > 0);
 
-        // 4. Serve native CBOR-LD (`application/cbor-ld`, Tag 0xD90501) state route (Zero-Heap, Zero-JSON)
+        // 4. Evaluate relationship mail and P2P permit via real VibeScript interpreter
+        let mail_val = server
+            .evaluate_mail_via_vibescript("bob@alice.tld", "alice@bob.tld", "alice@bob.tld")
+            .unwrap();
+        if let vibe::Value::Record(rec) = mail_val {
+            assert_eq!(rec.get("admitted"), Some(&vibe::Value::Bool(true)));
+        } else {
+            panic!("expected Record from verify_relationship_mail");
+        }
+
+        let permit_val = server
+            .evaluate_permit_via_vibescript(1, 85, 1_000, 250_000)
+            .unwrap();
+        if let vibe::Value::Record(rec) = permit_val {
+            assert_eq!(rec.get("admitted"), Some(&vibe::Value::Bool(true)));
+            assert_eq!(rec.get("tier_ceiling_pct"), Some(&vibe::Value::I64(95)));
+        } else {
+            panic!("expected Record from check_peer_resource_permit");
+        }
+
+        // 5. Serve native CBOR-LD (`application/cbor-ld`, Tag 0xD90501) state route (Zero-Heap, Zero-JSON)
         let mut cbor_wire = [0u8; CBOR_LD_QUIN_WIRE_SIZE];
         let (status, content_type, len) = server
             .serve_cbor_ld_state_zero_heap(

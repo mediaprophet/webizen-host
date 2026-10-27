@@ -10,6 +10,9 @@
 //!    Strict Turtle ↔ 48-byte `NQuin` translation boundary (`web.civics.au` baseline) + per-sandbox
 //!    eBPF socket bandwidth ceilings.
 
+pub use vibe::{
+    Env as VibeEnv, LocalHost as VibeLocalHost, Program as VibeProgram, Value as VibeValue,
+};
 use webizen_host_core::{
     pack_context, pack_metadata, pack_predicate, q_hash, NQuin, PermissiveRoutingLane,
     SensitivityClass, SLG_ARENA_CELL_BYTES,
@@ -44,7 +47,7 @@ pub enum CapabilityFamily {
     FilesystemMount = 12,
 }
 
-#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+#[derive(Clone, Debug, PartialEq, Eq)]
 pub enum SandboxError {
     CycleBudgetExhausted { used: u64, limit: u64 },
     ArenaCellExhausted { requested: usize, limit: usize },
@@ -54,6 +57,7 @@ pub enum SandboxError {
     },
     CapabilityLeaseDenied(CapabilityFamily),
     EbpfBandwidthQuotaExceeded { used_bytes: u64, ceiling_bytes: u64 },
+    VibeRuntimeDiagnostic(String),
 }
 
 /// Tier 1: VibeScript (`VBC1`) & 42 MiB `SlgArena` Sentinel Cell.
@@ -128,6 +132,133 @@ impl Tier1VibeCell {
         self.arena_bytes_used = next_arena;
         Ok(())
     }
+
+    /// Parse, type-check, effect-check, and execute a real VibeScript (`.vibe`) function
+    /// inside this Tier-1 cell using the `qualiaDB/crates/vibe` engine.
+    pub fn execute_vibe_function(
+        &mut self,
+        vibe_source: &str,
+        fn_name: &str,
+        args: Vec<VibeValue>,
+    ) -> Result<VibeValue, SandboxError> {
+        let source_len = vibe_source.len();
+        let projected_arena = self.arena_bytes_used.saturating_add(source_len);
+        if projected_arena > SLG_ARENA_CELL_BYTES {
+            return Err(SandboxError::ArenaCellExhausted {
+                requested: projected_arena,
+                limit: SLG_ARENA_CELL_BYTES,
+            });
+        }
+
+        let normalized = normalize_vibe_web_source(vibe_source);
+        let prog = match vibe::load_program(vibe_source) {
+            Ok(p) => p,
+            Err(_) if vibe_source.contains("web.cbor_ld_response") => {
+                vibe::load_program(&normalized)
+                    .map_err(|d| SandboxError::VibeRuntimeDiagnostic(d.message))?
+            }
+            Err(d) => return Err(SandboxError::VibeRuntimeDiagnostic(d.message)),
+        };
+
+        let mut required_effect = VibeEffectLevel::Pure;
+        let mut step_cost = 50u64;
+        for item in &prog.items {
+            if let vibe::Item::Function(f) = item {
+                if f.name == fn_name {
+                    required_effect = match f.effect {
+                        Some(vibe::EffectClass::Pure) => VibeEffectLevel::Pure,
+                        Some(vibe::EffectClass::Hot) => VibeEffectLevel::Hot,
+                        Some(vibe::EffectClass::Cold) => VibeEffectLevel::Cold,
+                        Some(vibe::EffectClass::Async) => VibeEffectLevel::Async,
+                        Some(vibe::EffectClass::External) => VibeEffectLevel::External,
+                        None if f.is_async => VibeEffectLevel::Async,
+                        None => VibeEffectLevel::Pure,
+                    };
+                    for arg in &f.budget {
+                        if arg.name == "steps" {
+                            match &arg.value.kind {
+                                vibe::ExprKind::Literal(vibe::Literal::Int(n)) if *n > 0 => {
+                                    step_cost = *n as u64;
+                                }
+                                vibe::ExprKind::Literal(vibe::Literal::UInt(u)) if *u > 0 => {
+                                    step_cost = *u;
+                                }
+                                _ => {}
+                            }
+                        }
+                    }
+                    break;
+                }
+            }
+        }
+
+        if required_effect > self.max_effect_level {
+            return Err(SandboxError::EffectLatticeViolation {
+                required: required_effect,
+                permitted: self.max_effect_level,
+            });
+        }
+
+        self.execute_vbc1_step(step_cost, required_effect, None, source_len)?;
+
+        let mut host = VibeLocalHost::default();
+        let mut env = VibeEnv::default();
+        match vibe::eval_function(&prog, fn_name, args.clone(), &mut host, &mut env) {
+            Ok(val) => Ok(val),
+            Err(d)
+                if vibe_source.contains("web.cbor_ld_response")
+                    && d.message.contains("web.cbor_ld_response") =>
+            {
+                let fallback_prog = vibe::load_program(&normalized)
+                    .map_err(|e| SandboxError::VibeRuntimeDiagnostic(e.message))?;
+                let mut fallback_host = VibeLocalHost::default();
+                let mut fallback_env = VibeEnv::default();
+                vibe::eval_function(
+                    &fallback_prog,
+                    fn_name,
+                    args,
+                    &mut fallback_host,
+                    &mut fallback_env,
+                )
+                .map_err(|e| SandboxError::VibeRuntimeDiagnostic(e.message))
+            }
+            Err(d) => Err(SandboxError::VibeRuntimeDiagnostic(d.message)),
+        }
+    }
+}
+
+fn normalize_vibe_web_source(vibe_source: &str) -> String {
+    if !vibe_source.contains("web.cbor_ld_response") {
+        return vibe_source.to_string();
+    }
+    let needle = "web.cbor_ld_response(";
+    let mut out = String::with_capacity(vibe_source.len() + 480);
+    let mut rest = vibe_source;
+    while let Some(pos) = rest.find(needle) {
+        out.push_str(&rest[..pos]);
+        let after = &rest[pos + needle.len()..];
+        let is_int = after.trim_start().chars().next().is_some_and(|c| c.is_ascii_digit());
+        out.push_str(if is_int {
+            "webizen_cbor_ld_response_3("
+        } else {
+            "webizen_cbor_ld_response_2("
+        });
+        rest = after;
+    }
+    out.push_str(rest);
+    out.push_str(
+        r#"
+pure fn webizen_cbor_ld_response_3(status: i64, ctx: String, payload: Record) budget(steps: 100) -> Record {
+    let encoded = cbor_ld.encode(payload, ctx);
+    let resp = web.response(status, "application/cbor-ld", encoded);
+    return { status: status, content_type: "application/cbor-ld", context: ctx, tag: encoded.tag, byte_len: encoded.byte_len, hex: encoded.hex, bytes: encoded.bytes, payload: payload, zero_js: resp.zero_js, headers: resp.headers };
+}
+pure fn webizen_cbor_ld_response_2(payload: Record, ctx: String) budget(steps: 100) -> Record {
+    return webizen_cbor_ld_response_3(200, ctx, payload);
+}
+"#,
+    );
+    out
 }
 
 /// Tier 2: Portable QApp (`qualia-app-contract` `SDK-01..10`) & WASM Isolate descriptor.
@@ -204,47 +335,22 @@ mod tests {
 
         // Authorized GraphDatabase step succeeds
         assert!(cell_a
-            .execute_vbc1_step(
-                400,
-                VibeEffectLevel::Hot,
-                Some(CapabilityFamily::GraphDatabase),
-                4096
-            )
+            .execute_vbc1_step(400, VibeEffectLevel::Hot, Some(CapabilityFamily::GraphDatabase), 4096)
             .is_ok());
 
         // Unauthorized ExternalNetwork lease fails closed via deontic_interrupt
         assert_eq!(
-            cell_a.execute_vbc1_step(
-                10,
-                VibeEffectLevel::Hot,
-                Some(CapabilityFamily::ExternalNetwork),
-                0
-            ),
-            Err(SandboxError::CapabilityLeaseDenied(
-                CapabilityFamily::ExternalNetwork
-            ))
+            cell_a.execute_vbc1_step(10, VibeEffectLevel::Hot, Some(CapabilityFamily::ExternalNetwork), 0),
+            Err(SandboxError::CapabilityLeaseDenied(CapabilityFamily::ExternalNetwork))
         );
 
         // Runaway script in cell_a halts deterministically at 1,000 cycles without affecting sibling cell_b
         assert_eq!(
-            cell_a.execute_vbc1_step(
-                700,
-                VibeEffectLevel::Pure,
-                Some(CapabilityFamily::DeonticLogic),
-                0
-            ),
-            Err(SandboxError::CycleBudgetExhausted {
-                used: 1100,
-                limit: 1000
-            })
+            cell_a.execute_vbc1_step(700, VibeEffectLevel::Pure, Some(CapabilityFamily::DeonticLogic), 0),
+            Err(SandboxError::CycleBudgetExhausted { used: 1100, limit: 1000 })
         );
         assert!(cell_b
-            .execute_vbc1_step(
-                500,
-                VibeEffectLevel::Hot,
-                Some(CapabilityFamily::GraphDatabase),
-                1024
-            )
+            .execute_vbc1_step(500, VibeEffectLevel::Hot, Some(CapabilityFamily::GraphDatabase), 1024)
             .is_ok());
     }
 
@@ -276,5 +382,99 @@ mod tests {
             )
             .unwrap();
         assert!(q.verify_parity());
+    }
+
+    #[test]
+    fn wp04_tier1_executes_real_vibe_engine_and_enforces_pure_effect_lattice() {
+        let vibe_src = r#"
+module webizen_host_cpanel;
+
+pure fn render_route(persona: String, page: String) budget(steps: 400) -> Record {
+    let view = ui.select_persona(persona, page);
+    let badge_patch = ui.patch("persona-badge", "textContent", view.badge);
+    let cbor_state = web.cbor_ld_response(200, "https://ns.webcivics.net/cpanel", view);
+    let resp = web.response(200, "text/html; charset=utf-8", view.badge);
+    return { view: view, patch: badge_patch, cbor_ld: cbor_state, response: resp };
+}
+
+pure fn verify_relationship_mail(alias: String, sender: String, allowed: String) budget(steps: 200) -> Record {
+    return web.route_mail(alias, sender, allowed);
+}
+
+pure fn check_peer_resource_permit(priority_tier: i64, host_util_pct: i64, req_units: i64, quota: i64) budget(steps: 200) -> Record {
+    return web.check_permit(priority_tier, host_util_pct, req_units, quota);
+}
+
+effect fn mutate_external_gateway(endpoint: String) budget(steps: 100) -> Record {
+    let resp = web.response(200, "text/plain", endpoint);
+    return resp;
+}
+"#;
+
+        let mut pure_cell = Tier1VibeCell::new(
+            "cpanel-pure-cell",
+            10_000,
+            VibeEffectLevel::Pure,
+            &[CapabilityFamily::GraphDatabase],
+        );
+
+        // 1. Execute `render_route` calling `ui.select_persona` and `web.cbor_ld_response`
+        let route_val = pure_cell
+            .execute_vibe_function(
+                vibe_src,
+                "render_route",
+                vec![VibeValue::String("geek".into()), VibeValue::String("domains".into())],
+            )
+            .unwrap();
+        let VibeValue::Record(route_rec) = route_val else { panic!("expected Record") };
+        assert!(route_rec.contains_key("view") && route_rec.contains_key("cbor_ld"));
+        assert_eq!(pure_cell.cycles_used, 400);
+
+        // 2. Execute `verify_relationship_mail` calling `web.route_mail`
+        let mail_val = pure_cell
+            .execute_vibe_function(
+                vibe_src,
+                "verify_relationship_mail",
+                vec![
+                    VibeValue::String("bob@alice.tld".into()),
+                    VibeValue::String("alice@bob.tld".into()),
+                    VibeValue::String("alice@bob.tld".into()),
+                ],
+            )
+            .unwrap();
+        let VibeValue::Record(mail_rec) = mail_val else { panic!("expected Record") };
+        assert_eq!(mail_rec.get("admitted"), Some(&VibeValue::Bool(true)));
+        assert_eq!(
+            mail_rec.get("verdict"),
+            Some(&VibeValue::String("DeliverToRelationshipThread".into()))
+        );
+        assert_eq!(pure_cell.cycles_used, 600);
+
+        // 3. Execute `check_peer_resource_permit` calling `web.check_permit`
+        let permit_val = pure_cell
+            .execute_vibe_function(
+                vibe_src,
+                "check_peer_resource_permit",
+                vec![VibeValue::I64(2), VibeValue::I64(70), VibeValue::I64(10), VibeValue::I64(50)],
+            )
+            .unwrap();
+        let VibeValue::Record(permit_rec) = permit_val else { panic!("expected Record") };
+        assert_eq!(permit_rec.get("admitted"), Some(&VibeValue::Bool(true)));
+        assert_eq!(permit_rec.get("status"), Some(&VibeValue::String("Admitted".into())));
+        assert_eq!(pure_cell.cycles_used, 800);
+
+        // 4. Verify `effect fn` fails closed with `EffectLatticeViolation` inside a `VibeEffectLevel::Pure` cell
+        let err = pure_cell.execute_vibe_function(
+            vibe_src,
+            "mutate_external_gateway",
+            vec![VibeValue::String("https://ns.webcivics.net".into())],
+        );
+        assert_eq!(
+            err,
+            Err(SandboxError::EffectLatticeViolation {
+                required: VibeEffectLevel::External,
+                permitted: VibeEffectLevel::Pure,
+            })
+        );
     }
 }

@@ -1,0 +1,1584 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <meta http-equiv="Content-Security-Policy" content="default-src 'self'; style-src 'self' 'unsafe-inline'; script-src 'none'; object-src 'none'; base-uri 'none'" />
+  <title>Webizen-Host Control Panel — Zero-JS VibeScript 12-Module Holographic Workbench</title>
+  <style>
+    :root {
+      --bg: #070a12;
+      --fg: #f1f5f9;
+      --card: rgba(15, 23, 42, 0.78);
+      --card-alt: #0f172a;
+      --secondary: rgba(30, 41, 59, 0.85);
+      --muted: #94a3b8;
+      --border: rgba(56, 189, 248, 0.22);
+      --sky: #38bdf8;
+      --sky-bg: rgba(56, 189, 248, 0.16);
+      --emerald: #34d399;
+      --emerald-bg: rgba(52, 211, 153, 0.16);
+      --amber: #fbbf24;
+      --amber-bg: rgba(251, 191, 36, 0.16);
+      --purple: #c084fc;
+      --purple-bg: rgba(192, 132, 252, 0.16);
+      --red: #f87171;
+      --red-bg: rgba(248, 113, 113, 0.16);
+    }
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+    body {
+      background:
+        radial-gradient(circle at 18% 12%, rgba(56, 189, 248, 0.16), transparent 42%),
+        radial-gradient(circle at 82% 18%, rgba(192, 132, 252, 0.15), transparent 46%),
+        radial-gradient(circle at 50% 88%, rgba(52, 211, 153, 0.10), transparent 50%),
+        linear-gradient(180deg, #050811 0%, #0b101e 55%, #070a12 100%);
+      color: var(--fg);
+      font-family: Inter, -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+      font-size: 13px;
+      line-height: 1.5;
+      min-height: 100vh;
+      display: flex;
+      flex-direction: column;
+    }
+    .app {
+      display: flex;
+      flex-direction: column;
+      min-height: 100vh;
+      width: 100%;
+    }
+    .mono {
+      font-family: "JetBrains Mono", "Fira Code", ui-monospace, SFMono-Regular, Menlo, monospace;
+      font-size: 12px;
+    }
+    /* Hidden state-machine radio/checkbox inputs (Zero-JS reactive state) */
+    .state-input, .sr { display: none; }
+
+    /* Top Header */
+    .top-header {
+      background: rgba(11, 15, 25, 0.86);
+      backdrop-filter: blur(18px);
+      border-bottom: 1px solid var(--border);
+      box-shadow: 0 8px 32px rgba(0, 0, 0, 0.45);
+      padding: 12px 20px;
+      display: flex;
+      flex-wrap: wrap;
+      align-items: center;
+      justify-content: space-between;
+      gap: 12px;
+      position: sticky;
+      top: 0;
+      z-index: 20;
+    }
+    .brand-row { display: flex; flex-wrap: wrap; align-items: center; gap: 10px; }
+    .dot-online { width: 10px; height: 10px; border-radius: 999px; background: var(--emerald); box-shadow: 0 0 12px var(--emerald); display: inline-block; }
+    .pill {
+      padding: 4px 10px;
+      border-radius: 6px;
+      font-size: 12px;
+      font-weight: 600;
+      border: 1px solid var(--border);
+      background: var(--secondary);
+      color: var(--fg);
+    }
+    .pill-sky { background: var(--sky-bg); color: var(--sky); border-color: rgba(56, 189, 248, 0.35); }
+    .pill-emerald { background: var(--emerald-bg); color: var(--emerald); border-color: rgba(52, 211, 153, 0.35); }
+    .pill-amber { background: var(--amber-bg); color: var(--amber); border-color: rgba(251, 191, 36, 0.35); }
+    .pill-purple { background: var(--purple-bg); color: var(--purple); border-color: rgba(192, 132, 252, 0.35); }
+    .pill-red { background: var(--red-bg); color: var(--red); border-color: rgba(248, 113, 113, 0.35); }
+
+    /* Persona Switcher Bar */
+    .persona-bar {
+      display: inline-flex;
+      flex-wrap: wrap;
+      gap: 4px;
+      background: var(--bg);
+      padding: 4px;
+      border-radius: 8px;
+      border: 1px solid var(--border);
+    }
+    .persona-label {
+      padding: 6px 12px;
+      border-radius: 6px;
+      font-size: 12px;
+      font-weight: 600;
+      color: var(--muted);
+      cursor: pointer;
+      user-select: none;
+      transition: all 0.15s;
+    }
+    .persona-label:hover { color: var(--fg); background: var(--secondary); }
+
+    /* Active Persona Button Highlight via CSS :has() */
+    body:has(#p-novice:checked) label[for="p-novice"],
+    body:has(#p-geek:checked) label[for="p-geek"],
+    body:has(#p-dev:checked) label[for="p-dev"],
+    body:has(#p-all:checked) label[for="p-all"] {
+      background: var(--sky);
+      color: #082f49;
+    }
+
+    /* Main Workspace Layout */
+    .workspace {
+      display: flex;
+      flex: 1;
+      max-width: 1600px;
+      width: 100%;
+      margin: 0 auto;
+    }
+    .sidebar, .side {
+      width: 290px;
+      background: rgba(13, 19, 33, 0.84);
+      backdrop-filter: blur(16px);
+      border-right: 1px solid var(--border);
+      padding: 14px;
+      display: flex;
+      flex-direction: column;
+      gap: 6px;
+      flex-shrink: 0;
+    }
+    .sidebar-heading {
+      font-size: 12px;
+      font-weight: 700;
+      text-transform: uppercase;
+      letter-spacing: 0.05em;
+      color: var(--muted);
+      padding: 4px 8px;
+    }
+    .nav-label {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      padding: 9px 12px;
+      border-radius: 8px;
+      font-size: 12px;
+      font-weight: 600;
+      color: var(--fg);
+      border: 1px solid transparent;
+      cursor: pointer;
+      user-select: none;
+      transition: all 0.18s ease;
+    }
+    .nav-label:hover { background: var(--secondary); border-color: rgba(56, 189, 248, 0.25); }
+    .nav-badge {
+      padding: 2px 7px;
+      border-radius: 4px;
+      font-size: 11px;
+      background: var(--secondary);
+      color: var(--muted);
+    }
+
+    /* Active Left-Sidebar Navigation Highlight via CSS :has() and sibling combinators */
+    body:has(#nav-rad-domains:checked) label[for="nav-rad-domains"],
+    body:has(#nav-rad-email:checked) label[for="nav-rad-email"],
+    body:has(#nav-rad-files:checked) label[for="nav-rad-files"],
+    body:has(#nav-rad-ontologies:checked) label[for="nav-rad-ontologies"],
+    body:has(#nav-rad-apps:checked) label[for="nav-rad-apps"],
+    body:has(#nav-rad-security:checked) label[for="nav-rad-security"],
+    body:has(#nav-rad-wallet:checked) label[for="nav-rad-wallet"],
+    body:has(#nav-rad-jobs:checked) label[for="nav-rad-jobs"],
+    body:has(#nav-rad-delegation:checked) label[for="nav-rad-delegation"],
+    body:has(#nav-rad-git:checked) label[for="nav-rad-git"],
+    body:has(#n-studio3d:checked) label[for="n-studio3d"],
+    body:has(#n-vibeux:checked) label[for="n-vibeux"],
+    body:has(#nav-rad-all:checked) label[for="nav-rad-all"] {
+      background: linear-gradient(90deg, rgba(56, 189, 248, 0.22), rgba(192, 132, 252, 0.14));
+      color: var(--sky);
+      border-color: rgba(56, 189, 248, 0.55);
+      box-shadow: 0 0 18px rgba(56, 189, 248, 0.18);
+    }
+
+    /* Main Content Panel */
+    .main-content {
+      flex: 1;
+      padding: 22px;
+      overflow-x: hidden;
+      display: flex;
+      flex-direction: column;
+      gap: 24px;
+    }
+
+    /* Page Visibility Switching (12 Left-Sidebar Pages + Show All Mode) */
+    .cpanel-page, .page { display: none; flex-direction: column; gap: 18px; }
+    #n-studio3d:checked ~ .main #page-studio-3d,
+    #n-vibeux:checked ~ .main #page-vibe-ux,
+    body:has(#nav-rad-domains:checked) #page-domains,
+    body:has(#nav-rad-email:checked) #page-email,
+    body:has(#nav-rad-files:checked) #page-files,
+    body:has(#nav-rad-ontologies:checked) #page-ontologies,
+    body:has(#nav-rad-apps:checked) #page-apps,
+    body:has(#nav-rad-security:checked) #page-security,
+    body:has(#nav-rad-wallet:checked) #page-wallet,
+    body:has(#nav-rad-jobs:checked) #page-jobs,
+    body:has(#nav-rad-delegation:checked) #page-delegation,
+    body:has(#nav-rad-git:checked) #page-git,
+    body:has(#n-studio3d:checked) #page-studio-3d,
+    body:has(#n-vibeux:checked) #page-vibe-ux,
+    body:has(#nav-rad-all:checked) .cpanel-page {
+      display: flex;
+    }
+
+    /* Persona Tier Block Visibility Switching (.tier-novice, .tier-geek, .tier-dev) */
+    .tier-block { display: none; }
+    body:has(#p-novice:checked) .tier-novice,
+    body:has(#p-geek:checked) .tier-geek,
+    body:has(#p-dev:checked) .tier-dev,
+    body:has(#p-all:checked) .tier-novice,
+    body:has(#p-all:checked) .tier-geek,
+    body:has(#p-all:checked) .tier-dev {
+      display: flex;
+      flex-direction: column;
+      gap: 14px;
+    }
+
+    /* Cards, Grids, Tables & Glassmorphic Specular Highlights */
+    .page-header {
+      border-bottom: 1px solid var(--border);
+      padding-bottom: 12px;
+      display: flex;
+      flex-wrap: wrap;
+      align-items: center;
+      justify-content: space-between;
+      gap: 10px;
+    }
+    .eyebrow {
+      font-size: 12px;
+      font-weight: 700;
+      text-transform: uppercase;
+      letter-spacing: 0.05em;
+      color: var(--sky);
+    }
+    .page-title { font-size: 20px; font-weight: 700; margin-top: 2px; }
+    .card {
+      background: var(--card);
+      backdrop-filter: blur(16px);
+      border: 1px solid var(--border);
+      border-radius: 12px;
+      padding: 18px;
+      box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.14), 0 12px 32px rgba(0, 0, 0, 0.42);
+    }
+    .subbox {
+      background: rgba(7, 10, 18, 0.78);
+      border: 1px solid var(--border);
+      border-radius: 8px;
+      padding: 12px;
+      box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.08);
+    }
+    .tier-title-novice { font-size: 15px; font-weight: 700; color: var(--sky); }
+    .tier-title-geek { font-size: 15px; font-weight: 700; color: var(--amber); }
+    .tier-title-dev { font-size: 15px; font-weight: 700; color: var(--purple); }
+    .muted { color: var(--muted); font-size: 12px; }
+    .grid-2 { display: grid; grid-template-columns: repeat(auto-fit, minmax(280px, 1fr)); gap: 12px; }
+    .grid-3 { display: grid; grid-template-columns: repeat(auto-fit, minmax(220px, 1fr)); gap: 12px; }
+    .grid-4 { display: grid; grid-template-columns: repeat(auto-fit, minmax(180px, 1fr)); gap: 10px; }
+    .row-between { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 8px; }
+    .btn-label {
+      display: inline-block;
+      padding: 7px 13px;
+      border-radius: 6px;
+      font-size: 12px;
+      font-weight: 600;
+      cursor: pointer;
+      user-select: none;
+      border: 1px solid var(--border);
+      background: var(--secondary);
+      color: var(--fg);
+      transition: all 0.18s ease;
+    }
+    .btn-label:hover { border-color: var(--sky); color: var(--sky); }
+    .cpanel-form-bar form { display: flex; flex-wrap: wrap; align-items: center; gap: 10px; }
+    .cpanel-form-bar input {
+      background: var(--bg);
+      border: 1px solid var(--border);
+      border-radius: 6px;
+      padding: 7px 10px;
+      color: var(--fg);
+      font-family: "JetBrains Mono", "Fira Code", ui-monospace, monospace;
+      font-size: 12px;
+      flex: 1;
+      min-width: 130px;
+    }
+    .cpanel-form-bar button {
+      background: linear-gradient(135deg, #38bdf8, #818cf8);
+      color: #050811;
+      border: 1px solid var(--sky);
+      border-radius: 6px;
+      padding: 7px 14px;
+      font-size: 12px;
+      font-weight: 700;
+      cursor: pointer;
+    }
+    table { width: 100%; border-collapse: collapse; font-size: 12px; }
+    th, td { text-align: left; padding: 9px 10px; border-bottom: 1px solid var(--border); }
+    th { color: var(--muted); font-weight: 600; }
+    pre {
+      background: var(--bg);
+      border: 1px solid var(--border);
+      border-radius: 8px;
+      padding: 12px;
+      overflow-x: auto;
+      font-size: 12px;
+      color: var(--sky);
+    }
+
+    /* AAA Film-Level Volumetric 3D Holographic Viewport & Pure-CSS Camera/Shader State Machine */
+    @keyframes orbitSpin {
+      0%   { transform: rotate(0deg) scale(1); }
+      50%  { transform: rotate(180deg) scale(1.04); }
+      100% { transform: rotate(360deg) scale(1); }
+    }
+    @keyframes pulseAura {
+      0%, 100% { opacity: 0.72; filter: drop-shadow(0 0 12px rgba(56, 189, 248, 0.65)); }
+      50%      { opacity: 1.0; filter: drop-shadow(0 0 24px rgba(192, 132, 252, 0.95)); }
+    }
+    .holo-stage {
+      position: relative;
+      border-radius: 14px;
+      border: 1px solid rgba(56, 189, 248, 0.42);
+      background:
+        radial-gradient(circle at 50% 42%, rgba(56, 189, 248, 0.22), rgba(192, 132, 252, 0.12) 45%, rgba(5, 8, 17, 0.96) 80%);
+      box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.22), 0 18px 48px rgba(0, 0, 0, 0.65);
+      overflow: hidden;
+      perspective: 1100px;
+      padding: 14px;
+    }
+    .holo-svg {
+      width: 100%;
+      height: auto;
+      display: block;
+      transition: transform 0.55s cubic-bezier(0.22, 1, 0.36, 1), filter 0.45s ease;
+      transform-style: preserve-3d;
+    }
+    .orbit-ring {
+      transform-origin: 440px 175px;
+      animation: orbitSpin 28s linear infinite;
+    }
+    .holo-core {
+      transform-origin: 440px 175px;
+      animation: pulseAura 4.5s ease-in-out infinite;
+    }
+    /* Camera Orbit Pure-CSS Perspective Modes */
+    body:has(#cam-iso:checked) label[for="cam-iso"],
+    body:has(#cam-zenith:checked) label[for="cam-zenith"],
+    body:has(#cam-cinema:checked) label[for="cam-cinema"] {
+      border-color: var(--sky);
+      background: var(--sky-bg);
+      color: var(--sky);
+    }
+    body:has(#cam-iso:checked) .holo-svg {
+      transform: rotateX(12deg) rotateY(-8deg) scale(1.0);
+    }
+    body:has(#cam-zenith:checked) .holo-svg {
+      transform: rotateX(42deg) rotateZ(14deg) scale(0.96);
+    }
+    body:has(#cam-cinema:checked) .holo-svg {
+      transform: rotateX(4deg) rotateY(16deg) scale(1.06);
+    }
+    /* PBR Shader Pure-CSS Spectral Modes */
+    body:has(#shd-plasma:checked) label[for="shd-plasma"],
+    body:has(#shd-obsidian:checked) label[for="shd-obsidian"],
+    body:has(#shd-crystal:checked) label[for="shd-crystal"] {
+      border-color: var(--purple);
+      background: var(--purple-bg);
+      color: var(--purple);
+    }
+    body:has(#shd-plasma:checked) .holo-svg {
+      filter: hue-rotate(0deg) saturate(1.25) contrast(1.08);
+    }
+    body:has(#shd-obsidian:checked) .holo-svg {
+      filter: hue-rotate(210deg) saturate(0.85) contrast(1.35) brightness(0.92);
+    }
+    body:has(#shd-crystal:checked) .holo-svg {
+      filter: hue-rotate(135deg) saturate(1.45) brightness(1.12);
+    }
+    /* Mesh Preset Pure-CSS 3D Geometry Switcher */
+    .mesh-layer { display: none; }
+    body:has(#mesh-dome:checked) #layer-mesh-dome,
+    body:has(#mesh-torus:checked) #layer-mesh-torus,
+    body:has(#mesh-spire:checked) #layer-mesh-spire,
+    body:has(#mesh-ring:checked) #layer-mesh-ring { display: inline; }
+    body:has(#mesh-dome:checked) label[for="mesh-dome"],
+    body:has(#mesh-torus:checked) label[for="mesh-torus"],
+    body:has(#mesh-spire:checked) label[for="mesh-spire"],
+    body:has(#mesh-ring:checked) label[for="mesh-ring"] {
+      border-color: var(--emerald);
+      background: var(--emerald-bg);
+      color: var(--emerald);
+    }
+    .timeline-track {
+      height: 8px;
+      border-radius: 999px;
+      background: rgba(30, 41, 59, 0.9);
+      border: 1px solid rgba(56, 189, 248, 0.25);
+      overflow: hidden;
+      position: relative;
+    }
+    .timeline-fill {
+      height: 100%;
+      border-radius: 999px;
+      background: linear-gradient(90deg, var(--sky), var(--purple), var(--emerald));
+    }
+
+    /* Interactive Zero-JS Sub-State Machines */
+    /* 1. Mail Gate Simulator on Page 2 */
+    .mail-sim-out { display: none; }
+    body:has(#msim-valid:checked) #msim-out-valid,
+    body:has(#msim-spam:checked) #msim-out-spam,
+    body:has(#msim-hook:checked) #msim-out-hook { display: block; }
+    body:has(#msim-valid:checked) label[for="msim-valid"],
+    body:has(#msim-spam:checked) label[for="msim-spam"],
+    body:has(#msim-hook:checked) label[for="msim-hook"] {
+      border-color: var(--sky);
+      background: var(--sky-bg);
+      color: var(--sky);
+    }
+
+    /* 2. Ontology Verify-Before-Rebuild Simulator on Page 4 */
+    .ont-sim-out { display: none; }
+    body:has(#osim-adopt:checked) #osim-out-adopt,
+    body:has(#osim-rebuild:checked) #osim-out-rebuild { display: block; }
+    body:has(#osim-adopt:checked) label[for="osim-adopt"],
+    body:has(#osim-rebuild:checked) label[for="osim-rebuild"] {
+      border-color: var(--emerald);
+      background: var(--emerald-bg);
+      color: var(--emerald);
+    }
+
+    /* 3. P2P Budget Saturation Simulator on Page 9 */
+    .bsim-out { display: none; }
+    body:has(#bsim-45:checked) #bsim-out-45,
+    body:has(#bsim-65:checked) #bsim-out-65,
+    body:has(#bsim-85:checked) #bsim-out-85,
+    body:has(#bsim-98:checked) #bsim-out-98 { display: grid; }
+    body:has(#bsim-45:checked) label[for="bsim-45"],
+    body:has(#bsim-65:checked) label[for="bsim-65"],
+    body:has(#bsim-85:checked) label[for="bsim-85"],
+    body:has(#bsim-98:checked) label[for="bsim-98"] {
+      border-color: var(--amber);
+      background: var(--amber-bg);
+      color: var(--amber);
+    }
+
+    /* 4. Webizen Git Forge Subtabs & PR Quorum Merge on Page 10 */
+    .git-subpanel { display: none; }
+    body:has(#gtab-code:checked) #gpanel-code,
+    body:has(#gtab-prs:checked) #gpanel-prs,
+    body:has(#gtab-issues:checked) #gpanel-issues,
+    body:has(#gtab-actions:checked) #gpanel-actions { display: flex; flex-direction: column; gap: 12px; }
+    body:has(#gtab-code:checked) label[for="gtab-code"],
+    body:has(#gtab-prs:checked) label[for="gtab-prs"],
+    body:has(#gtab-issues:checked) label[for="gtab-issues"],
+    body:has(#gtab-actions:checked) label[for="gtab-actions"] {
+      background: var(--amber);
+      color: #082f49;
+      border-color: var(--amber);
+    }
+    #pr42-merged-banner { display: none; }
+    body:has(#pr42-merge-toggle:checked) #pr42-merged-banner { display: block; }
+    body:has(#pr42-merge-toggle:checked) #pr42-open-banner { display: none; }
+  </style>
+</head>
+<body>
+<div class="app">
+
+  <!-- ===================================================================== -->
+  <!-- ZERO-JS REACTIVE STATE INPUTS (DRIVEN BY PURE CSS + VIBESCRIPT)       -->
+  <!-- ===================================================================== -->
+  <!-- Persona Mode Inputs -->
+  <input class="state-input sr" type="radio" name="persona-mode" id="p-novice" />
+  <input class="state-input sr" type="radio" name="persona-mode" id="p-geek" />
+  <input class="state-input sr" type="radio" name="persona-mode" id="p-dev" />
+  <input class="state-input sr" type="radio" name="persona-mode" id="p-all" checked />
+
+  <!-- 12 Left-Sidebar cPanel, Git, 3D Studio & VibeScript UI/UX Module Inputs -->
+  <input class="state-input sr" type="radio" name="nav" id="nav-rad-domains" />
+  <input class="state-input sr" type="radio" name="nav" id="nav-rad-email" />
+  <input class="state-input sr" type="radio" name="nav" id="nav-rad-files" />
+  <input class="state-input sr" type="radio" name="nav" id="nav-rad-ontologies" />
+  <input class="state-input sr" type="radio" name="nav" id="nav-rad-apps" />
+  <input class="state-input sr" type="radio" name="nav" id="nav-rad-security" />
+  <input class="state-input sr" type="radio" name="nav" id="nav-rad-wallet" />
+  <input class="state-input sr" type="radio" name="nav" id="nav-rad-jobs" />
+  <input class="state-input sr" type="radio" name="nav" id="nav-rad-delegation" />
+  <input class="state-input sr" type="radio" name="nav" id="nav-rad-git" />
+  <input class="sr" type="radio" name="nav" id="n-studio3d" checked>
+  <input class="sr" type="radio" name="nav" id="n-vibeux">
+  <input class="sr" type="radio" name="nav" id="nav-rad-all">
+
+  <!-- 3D Studio Pure-CSS Camera Orbit, Mesh Preset & PBR Shader Radio Toggles -->
+  <input class="sr" type="radio" name="mesh-mode" id="mesh-dome" checked>
+  <input class="sr" type="radio" name="mesh-mode" id="mesh-torus">
+  <input class="sr" type="radio" name="mesh-mode" id="mesh-spire">
+  <input class="sr" type="radio" name="mesh-mode" id="mesh-ring">
+  <input class="sr" type="radio" name="cam-mode" id="cam-iso" checked>
+  <input class="sr" type="radio" name="cam-mode" id="cam-zenith">
+  <input class="sr" type="radio" name="cam-mode" id="cam-cinema">
+  <input class="sr" type="radio" name="shd-mode" id="shd-plasma" checked>
+  <input class="sr" type="radio" name="shd-mode" id="shd-obsidian">
+  <input class="sr" type="radio" name="shd-mode" id="shd-crystal">
+
+  <!-- Interactive Sub-State Inputs (Mail Gate, Ontology Dedup, Budget Shedding, Git Tabs) -->
+  <input class="state-input sr" type="radio" name="mail-sim" id="msim-valid" checked />
+  <input class="state-input sr" type="radio" name="mail-sim" id="msim-spam" />
+  <input class="state-input sr" type="radio" name="mail-sim" id="msim-hook" />
+
+  <input class="state-input sr" type="radio" name="ont-sim" id="osim-adopt" checked />
+  <input class="state-input sr" type="radio" name="ont-sim" id="osim-rebuild" />
+
+  <input class="state-input sr" type="radio" name="budget-sim" id="bsim-45" checked />
+  <input class="state-input sr" type="radio" name="budget-sim" id="bsim-65" />
+  <input class="state-input sr" type="radio" name="budget-sim" id="bsim-85" />
+  <input class="state-input sr" type="radio" name="budget-sim" id="bsim-98" />
+
+  <input class="state-input sr" type="radio" name="git-subtab" id="gtab-code" checked />
+  <input class="state-input sr" type="radio" name="git-subtab" id="gtab-prs" />
+  <input class="state-input sr" type="radio" name="git-subtab" id="gtab-issues" />
+  <input class="state-input sr" type="radio" name="git-subtab" id="gtab-actions" />
+  <input class="state-input sr" type="checkbox" id="pr42-merge-toggle" />
+
+  <!-- ===================================================================== -->
+  <!-- PERSISTENT TOP HEADER & THREE-PERSONA MODE SELECTOR                   -->
+  <!-- ===================================================================== -->
+  <header class="top-header">
+    <div class="brand-row">
+      <span class="dot-online"></span>
+      <strong>Webizen-Host Control Panel</strong>
+      <span class="pill pill-emerald mono">Zero-JS • VibeScript (VBC1) Enforced</span>
+      <span class="pill mono">ns.webcivics.net (:443 / :4242 ⇄ :8080)</span>
+      <span class="pill pill-sky">$12/mo Bill Shield ($0.00 Overage)</span>
+    </div>
+
+    <div class="brand-row">
+      <span class="muted">Interface Depth:</span>
+      <div class="persona-bar">
+        <label class="persona-label" for="p-novice">1. Novice (Guided)</label>
+        <label class="persona-label" for="p-geek">2. Tech Geek (Sysadmin/Net)</label>
+        <label class="persona-label" for="p-dev">3. Developer (SPARQL/ABI)</label>
+        <label class="persona-label" for="p-all">All 3 Stacked</label>
+      </div>
+    </div>
+  </header>
+
+  <!-- ===================================================================== -->
+  <!-- MAIN WORKSPACE: LEFT SIDEBAR (12 MODULES) + ACTIVE PAGE               -->
+  <!-- ===================================================================== -->
+  <div class="workspace main">
+
+    <aside class="sidebar side">
+      <div class="sidebar-heading">cPanel, Git &amp; Studio (12)</div>
+      <label class="nav-label" for="nav-rad-domains"><span>1. Domains &amp; DNS Zones</span><span class="nav-badge mono">3 Zones</span></label>
+      <label class="nav-label" for="nav-rad-email"><span>2. Email (`bob@alice.tld`)</span><span class="nav-badge mono">14 Aliases</span></label>
+      <label class="nav-label" for="nav-rad-files"><span>3. Files, IPFS &amp; Storage</span><span class="nav-badge mono">HTTP 206</span></label>
+      <label class="nav-label" for="nav-rad-ontologies"><span>4. Ontologies &amp; Databases</span><span class="nav-badge mono">SPARQL</span></label>
+      <label class="nav-label" for="nav-rad-apps"><span>5. Apps &amp; Solid Pods</span><span class="nav-badge mono">5 Active</span></label>
+      <label class="nav-label" for="nav-rad-security"><span>6. SSL, Identity &amp; Security</span><span class="nav-badge mono">ACME+PQ</span></label>
+      <label class="nav-label" for="nav-rad-wallet"><span>7. Wallet, Exchanges &amp; Billing</span><span class="nav-badge mono">6 Chains</span></label>
+      <label class="nav-label" for="nav-rad-jobs"><span>8. Jobs, Cron &amp; Metrics</span><span class="nav-badge mono">42 MiB</span></label>
+      <label class="nav-label" for="nav-rad-delegation"><span>9. P2P Resource Permits</span><span class="nav-badge mono">P0..P3</span></label>
+      <label class="nav-label" for="nav-rad-git"><span>10. Git Forge (Q-Git)</span><span class="nav-badge mono">GitHub Alt</span></label>
+      <label class="nav-label" for="n-studio3d"><span>11. 3D Asset &amp; Scene Forge</span><span class="nav-badge mono">.hmc 3D</span></label>
+      <label class="nav-label" for="n-vibeux"><span>12. VibeScript UI/UX &amp; Sheaf Studio</span><span class="nav-badge mono">Sheaf T69</span></label>
+      <label class="nav-label" for="nav-rad-all"><span>★ View All 12 Modules Stacked</span><span class="nav-badge mono">Full Deck</span></label>
+
+      <div class="subbox" style="margin-top: 12px;">
+        <div class="sidebar-heading" style="padding: 0 0 6px 0;">VibeScript Runtime</div>
+        <div class="row-between"><span class="muted">CSP Policy:</span><span class="mono" style="color: var(--emerald);">script-src 'none'</span></div>
+        <div class="row-between"><span class="muted">Origin Egress:</span><span class="mono">184 / 1,500 GiB</span></div>
+        <div class="row-between"><span class="muted">Q-CDN Offload:</span><span class="mono" style="color: var(--sky);">612 GiB (Free)</span></div>
+        <div class="row-between"><span class="muted">SlgArena Cell:</span><span class="mono" style="color: var(--purple);">4.0 / 42.0 MiB</span></div>
+      </div>
+    </aside>
+
+    <main class="main-content main">
+
+      <!-- ================================================================= -->
+      <!-- PAGE 1: DOMAINS & DNS ZONES                                       -->
+      <!-- ================================================================= -->
+      <section id="page-domains" class="cpanel-page">
+        <div class="page-header">
+          <div>
+            <div class="eyebrow">Module 1 • Replaces cPanel Domains, Subdomains &amp; Zone Editor</div>
+            <h1 class="page-title">Domains, Subdomains &amp; Authoritative DNS Zones</h1>
+          </div>
+          <span class="pill pill-sky">VibeScript Route: `web.domains`</span>
+        </div>
+
+        <div class="card tier-block tier-novice">
+          <div class="row-between">
+            <span class="tier-title-novice">1. Novice — My Connected Websites &amp; 1-Click Domain Setup</span>
+            <span class="pill pill-emerald">Auto-SSL + Peer-CDN Active</span>
+          </div>
+          <table>
+            <thead>
+              <tr><th>Domain / Website</th><th>Visibility Scope</th><th>HTTPS Status</th><th>Bill Shield Peer-CDN</th></tr>
+            </thead>
+            <tbody>
+              <tr><td class="mono">ns.webcivics.net</td><td>Public Website &amp; Ontology Hub</td><td style="color: var(--emerald);">✓ Protected (Auto-SSL)</td><td style="color: var(--sky);">✓ Active ($0 Overage)</td></tr>
+              <tr><td class="mono">alice.tld</td><td>Personal &amp; Relationship Mail Domain</td><td style="color: var(--emerald);">✓ Protected (WebizenID-TLS)</td><td style="color: var(--sky);">✓ Active ($0 Overage)</td></tr>
+              <tr><td class="mono">family.alice.tld</td><td>Family Safe Space (Guardianship)</td><td style="color: var(--emerald);">✓ Protected (Private Mesh)</td><td style="color: var(--purple);">Local + Guardian Mesh</td></tr>
+            </tbody>
+          </table>
+        </div>
+
+        <div class="card tier-block tier-geek">
+          <div class="row-between">
+            <span class="tier-title-geek">2. Tech Geek — Authoritative DNS Zone Editor &amp; Split-Horizon `QPolicy`</span>
+            <span class="pill pill-amber mono">:53 UDP/TCP • DoH (:443) • DoT/DoQ (:853)</span>
+          </div>
+          <table class="mono">
+            <thead>
+              <tr><th>Name</th><th>TTL</th><th>Type</th><th>Horizon Policy</th><th>Value / Target</th></tr>
+            </thead>
+            <tbody>
+              <tr><td>ns.webcivics.net.</td><td>300</td><td style="color: var(--sky);">A</td><td>PUBLIC_WAN</td><td>203.0.113.42</td></tr>
+              <tr><td>ns.webcivics.net.</td><td>60</td><td style="color: var(--purple);">QRoute</td><td>GUARDIAN_MESH (did:qi)</td><td>fd00:42:8f2a:99c1::1 (WireGuard + CSCP-08 MASQUE)</td></tr>
+              <tr><td>_did.alice.tld.</td><td>3600</td><td style="color: var(--emerald);">TXT</td><td>PUBLIC_WAN</td><td>"did=did:qi:alice; pqc=ml-dsa-65; runtime=vibescript"</td></tr>
+            </tbody>
+          </table>
+        </div>
+
+        <div class="card tier-block tier-dev">
+          <span class="tier-title-dev">3. Developer — `HotZeroHeap` 48-Byte `NQuin` DNS Ring Buffer Inspector</span>
+          <pre class="mono">// 48-Byte NQuin DNS Ring Slot #0 (`crates/webizen-host-dns/src/lib.rs`)
+subject   [q_hash("ns.webcivics.net")] = 0x88f1_42a9_c019_7731
+predicate [DNS_OPCODE_A_RECORD (0x11)]  = 0x0091_a4b2_0000_0011
+object    [IPv4 203.0.113.42 inline]    = 0x1000_0000_cb00_712a
+context   [SENSITIVITY_PUBLIC (0x00)]   = 0x0000_0000_0000_0001
+parity    [XOR fold verified]           = 0x9860_e61b_0b19_060b ✓ (0 B Heap Allocated)</pre>
+        </div>
+
+        <div class="card cpanel-form-bar">
+          <form method="post" action="/cpanel/domains/add">
+            <input name="domain" value="civic-coop.org">
+            <input name="rr_type" value="A">
+            <input name="value" value="203.0.113.42">
+            <button type="submit">Save Domain &amp; DNS Record</button>
+          </form>
+        </div>
+      </section>
+
+      <!-- ================================================================= -->
+      <!-- PAGE 2: EMAIL (`bob@alice.tld`) & PROGRAMMABLE ALIASES            -->
+      <!-- ================================================================= -->
+      <section id="page-email" class="cpanel-page">
+        <div class="page-header">
+          <div>
+            <div class="eyebrow">Module 2 • Webizen Relationship Mail (`bob@alice.tld`) &amp; Programmable Hooks</div>
+            <h1 class="page-title">Relationship-Scoped Email (`bob@alice.tld`) &amp; Programmable VibeScript Aliases</h1>
+          </div>
+          <span class="pill pill-emerald">1 Address Per Relationship = Zero Spam</span>
+        </div>
+
+        <div class="card tier-block tier-novice">
+          <span class="tier-title-novice">1. Novice — Relationship Addresses (`bob@alice.tld`) &amp; Smart Purpose Aliases</span>
+          <p class="muted">
+            In Webizen, the name before `@alice.tld` identifies <strong>your relationship counterparty</strong> (like <strong>`bob@alice.tld`</strong> or <strong>`sunrise-school@alice.tld`</strong>) rather than a single global inbox. Only Bob can send to `bob@alice.tld`! You also have <strong>Programmable Aliases</strong> (like `receipts@alice.tld`) powered by VibeScript.
+          </p>
+          <table>
+            <thead>
+              <tr><th>Your `@alice.tld` Address</th><th>Alias Type</th><th>Locked Sender / VibeScript Rule</th><th>Status</th></tr>
+            </thead>
+            <tbody>
+              <tr><td class="mono" style="color: var(--sky); font-weight: 700;">bob@alice.tld</td><td>1:1 Relationship</td><td class="mono">Locked to `alice@bob.tld` / `did:qi:bob`</td><td><span class="pill pill-emerald">Protected</span></td></tr>
+              <tr><td class="mono" style="color: var(--sky); font-weight: 700;">sunrise-school@alice.tld</td><td>1:1 Relationship</td><td class="mono">Locked to `@sunriseschool.edu.au`</td><td><span class="pill pill-emerald">Protected</span></td></tr>
+              <tr><td class="mono" style="color: var(--purple); font-weight: 700;">receipts@alice.tld</td><td>Programmable (`VBC1`)</td><td class="mono">Auto-parses PDF/CBOR-LD bills into `.q42` Finance</td><td><span class="pill pill-purple">VibeScript Hook</span></td></tr>
+              <tr><td class="mono" style="color: var(--amber); font-weight: 700;">hello@alice.tld</td><td>General Purpose</td><td class="mono">Requires `did:qi` or anti-spam micro-postage</td><td><span class="pill pill-amber">Guarded</span></td></tr>
+              <tr><td class="mono" style="color: var(--muted); font-weight: 700;">shop-48h@alice.tld</td><td>Ephemeral Burner</td><td class="mono">Auto-expires after 2 uses or 48 hours</td><td><span class="pill">Temporary</span></td></tr>
+            </tbody>
+          </table>
+        </div>
+
+        <div class="card tier-block tier-geek">
+          <span class="tier-title-geek">2. Tech Geek — Interactive `web.route_mail` SMTP/JMAP Gate Simulator (Zero-JS)</span>
+          <p class="muted">Click any scenario below to evaluate `web.route_mail(alias, sender_email, allowed_sender)`:</p>
+          <div class="brand-row">
+            <label class="btn-label" for="msim-valid">1. Valid: `alice@bob.tld` → `bob@alice.tld`</label>
+            <label class="btn-label" for="msim-spam">2. Spammer: `promo@broker.com` → `bob@alice.tld`</label>
+            <label class="btn-label" for="msim-hook">3. Programmable: Invoice → `receipts@alice.tld`</label>
+          </div>
+          <div id="msim-out-valid" class="subbox mail-sim-out mono" style="color: var(--emerald);">
+            ✓ VibeScript `web.route_mail("bob@alice.tld", "alice@bob.tld", "alice@bob.tld")` → Verdict: DeliverToRelationshipThread (DKIM + did:qi:bob verified)
+          </div>
+          <div id="msim-out-spam" class="subbox mail-sim-out mono" style="color: var(--red);">
+            ✗ VibeScript `web.route_mail("bob@alice.tld", "promo@broker.com", "alice@bob.tld")` → Verdict: RejectedUnauthorizedSender { pinpointed_leak_source: "bob" }
+          </div>
+          <div id="msim-out-hook" class="subbox mail-sim-out mono" style="color: var(--purple);">
+            ⚙ VibeScript `web.route_mail("receipts@alice.tld", "billing@coop.au", "hook:ParseInvoiceToQ42")` → Verdict: ExecuteProgrammableHook (VBC1 cycle budget: 180 ops)
+          </div>
+        </div>
+
+        <div class="card tier-block tier-dev">
+          <span class="tier-title-dev">3. Developer — VibeScript (`vibe-0.1`) Relationship &amp; Programmable Mail Handler</span>
+          <pre class="mono">module webizen.mail.router;
+
+fn evaluate_inbound(alias: String, sender: String, allowed: String) -> Record
+    with [ effect(Pure), budget(steps: 200) ]
+{
+    web.route_mail(alias, sender, allowed)
+}</pre>
+        </div>
+
+        <div class="card cpanel-form-bar">
+          <form method="post" action="/cpanel/email/add">
+            <input name="local_part" value="bob">
+            <input name="domain" value="alice.tld">
+            <input name="allowed_sender" value="alice@bob.tld">
+            <button type="submit">Create Relationship Mail Alias</button>
+          </form>
+        </div>
+      </section>
+
+      <!-- ================================================================= -->
+      <!-- PAGE 3: FILES, IPFS & STORAGE                                     -->
+      <!-- ================================================================= -->
+      <section id="page-files" class="cpanel-page">
+        <div class="page-header">
+          <div>
+            <div class="eyebrow">Module 3 • Replaces cPanel File Manager, FTP &amp; Disk Usage</div>
+            <h1 class="page-title">File Manager, IPFS / WebTorrent / HTTP-206 Seeding &amp; Sanctuary Keep</h1>
+          </div>
+          <span class="pill pill-sky">40 KiB `QualiaSuperBlock` Range Serving</span>
+        </div>
+
+        <div class="card tier-block tier-novice">
+          <span class="tier-title-novice">1. Novice — Public Website Files vs. Private Sanctuary Keep</span>
+          <div class="grid-2">
+            <div class="subbox">
+              <strong style="color: var(--emerald);">🌐 Public Website &amp; Shared Folder (`/public_html`)</strong>
+              <p class="muted" style="margin-top: 4px;">Shared via community peers (`IPFS` + `WebTorrent` + `HTTP 206`) so large downloads never cost you extra bandwidth.</p>
+            </div>
+            <div class="subbox">
+              <strong style="color: var(--purple);">🔒 Private Sanctuary Keep (`/sanctuary_keep`)</strong>
+              <p class="muted" style="margin-top: 4px;">Strictly locked to your local device (`:8080`). Hardware-blocked from public IPFS/WebTorrent sharing (`SanctuaryVolumePublicSharingForbidden`).</p>
+            </div>
+          </div>
+        </div>
+
+        <div class="card tier-block tier-geek">
+          <span class="tier-title-geek">2. Tech Geek — Multi-Protocol Seeding Matrix (`IPFS CIDv1`, `WebTorrent`, `HTTP 206 Range`)</span>
+          <table class="mono">
+            <thead>
+              <tr><th>Path</th><th>Size</th><th>HTTP 206 Range</th><th>IPFS CIDv1 / Partial-CAR</th><th>WebTorrent + HTTP WebSeed</th></tr>
+            </thead>
+            <tbody>
+              <tr><td>/volumes/webcivics-ns.q42</td><td>142.4 MiB</td><td style="color: var(--emerald);">Accept-Ranges: bytes</td><td style="color: var(--sky);">ipfs://bafkreihdwdcefgh4...</td><td style="color: var(--purple);">magnet:?xt=urn:btih:6a97...&amp;ws=...</td></tr>
+              <tr><td>/sanctuary/family.q42</td><td>12.1 MiB</td><td style="color: var(--red);">BLOCKED (FLAG_SANCTUARY)</td><td style="color: var(--red);">DENIED (Fail-Closed)</td><td style="color: var(--red);">DENIED (Fail-Closed)</td></tr>
+            </tbody>
+          </table>
+        </div>
+
+        <div class="card tier-block tier-dev">
+          <span class="tier-title-dev">3. Developer — VibeScript `web.range_response` &amp; ADR 0014 `PCAT` (`0x0080`) Inspector</span>
+          <pre class="mono">= web.range_response(9830400, 4096, 45055, "0x89a1f02c")
+// Returns: { status: 206, accept_ranges: "bytes", content_range: "bytes 4096-45055/9830400", content_length: 40960, zero_js: true }</pre>
+        </div>
+
+        <div class="card cpanel-form-bar">
+          <form method="post" action="/cpanel/files/publish">
+            <input name="file_name" value="dataset.q42">
+            <input name="visibility" value="permissive-commons">
+            <button type="submit">Publish to IPFS + WebTorrent + HTTP-206</button>
+          </form>
+        </div>
+      </section>
+
+      <!-- ================================================================= -->
+      <!-- PAGE 4: ONTOLOGIES & DATABASES                                    -->
+      <!-- ================================================================= -->
+      <section id="page-ontologies" class="cpanel-page">
+        <div class="page-header">
+          <div>
+            <div class="eyebrow">Module 4 • Replaces cPanel MySQL Databases &amp; phpMyAdmin</div>
+            <h1 class="page-title">Ontologies, `.q42` Volumes, Network Deduplication &amp; Range-SPARQL Studio</h1>
+          </div>
+          <span class="pill pill-emerald">99.58% Bandwidth Saved via HTTP 206 Range-SPARQL</span>
+        </div>
+
+        <div class="card tier-block tier-novice">
+          <span class="tier-title-novice">1. Novice — 1-Click Knowledge Libraries (Smart Network Adoption)</span>
+          <div class="subbox row-between">
+            <div>
+              <strong>WebCivics Human-Rights &amp; Stewardship Library (`WebCivics/ns` — 142.4 MB)</strong>
+              <div class="muted">✓ Verified copy found on network — adopted in 1.8s without re-processing on your server</div>
+            </div>
+            <span class="pill pill-emerald">Mounted &amp; Seeding</span>
+          </div>
+        </div>
+
+        <div class="card tier-block tier-geek">
+          <span class="tier-title-geek">2. Tech Geek — "Verify-Before-Rebuild" Deduplication &amp; Over-Time Chunk Simulator</span>
+          <div class="brand-row">
+            <label class="btn-label" for="osim-adopt">1. Valid Peer Copy on Network (Adopt in 0 CPU Cycles)</label>
+            <label class="btn-label" for="osim-rebuild">2. Corrupted Peer Candidate (Quarantine &amp; Incremental Rebuild)</label>
+          </div>
+          <div id="osim-out-adopt" class="subbox ont-sim-out mono" style="color: var(--emerald);">
+            ✓ NetworkDeduplicationDecision::AdoptedVerifiedNetworkArtifact — SHA-256 + CRC-32C + Q42LEX v4 + SHACL Non-Thing verified (128/128 chunks skipped)
+          </div>
+          <div id="osim-out-rebuild" class="subbox ont-sim-out mono" style="color: var(--amber);">
+            ⟳ NetworkDeduplicationDecision::RebuildingIncrementally — Peer quarantined; processing Chunk 32 / 128 in 42 MiB SlgArena...
+          </div>
+        </div>
+
+        <div class="card tier-block tier-dev">
+          <span class="tier-title-dev">3. Developer — `RangeSparqlEngine` (`HTTP 206` + `BIDX` Pruning) &amp; 48-Byte `NQuin` Inspector</span>
+          <pre class="mono">PREFIX wc: &lt;https://webcivics.github.io/ns/guardianship#&gt;
+SELECT ?subject ?predicate ?object WHERE { ?subject wc:hasGuardianshipScope ?object . }
+
+// BIDX FieldRangeIndex Pruned 239 / 240 SuperBlocks -> Fetched SuperBlock #0 (40.0 KiB via HTTP 206 Range: bytes=4096-45055)
+// Matched NQuin[0]: S=0x1122334455667788 P=0x001a2b3c00000010 (OP_OBLIGATE) O=0x100000000000002a Parity=VALID ✓</pre>
+        </div>
+
+        <div class="card cpanel-form-bar">
+          <form method="post" action="/cpanel/ontologies/sparql">
+            <input name="query" value="SELECT ?s ?p WHERE { ?s ?p <https://ns.webcivics.net/hr#Inalienable> }">
+            <button type="submit">Execute Range-SPARQL (CBOR-LD)</button>
+          </form>
+        </div>
+      </section>
+
+      <!-- ================================================================= -->
+      <!-- PAGE 5: APPS & SOLID PODS                                         -->
+      <!-- ================================================================= -->
+      <section id="page-apps" class="cpanel-page">
+        <div class="page-header">
+          <div>
+            <div class="eyebrow">Module 5 • Replaces Softaculous, Application Manager &amp; Node/PHP Selector</div>
+            <h1 class="page-title">1-Click Native QApps (`SDK-01..10`), VibeScript Apps &amp; W3C Solid Pods</h1>
+          </div>
+          <span class="pill pill-purple">JavaScript Eradicated • Native VibeScript + WASM</span>
+        </div>
+
+        <div class="card tier-block tier-novice">
+          <span class="tier-title-novice">1. Novice — Installed Applications &amp; Personal Storage Pods</span>
+          <div class="grid-3">
+            <div class="subbox"><strong>Personal &amp; Family Solid Pod</strong><p class="muted" style="margin-top:4px;">W3C Solid LDP + ActivityPub social storage on `pod.alice.tld`.</p></div>
+            <div class="subbox"><strong>Poet Collaborative Workspace</strong><p class="muted" style="margin-top:4px;">VibeScript-powered documents, calendars &amp; co-op wiki.</p></div>
+            <div class="subbox"><strong>Community Chat (`qualia-chat`)</strong><p class="muted" style="margin-top:4px;">End-to-end encrypted DAG messaging for families &amp; co-ops.</p></div>
+          </div>
+        </div>
+
+        <div class="card tier-block tier-geek">
+          <span class="tier-title-geek">2. Tech Geek — Three-Tier Sandbox &amp; VibeScript App Registry</span>
+          <pre class="mono">Tier-1 (VBC1 Inline)  • cpanel-controller.vibe • Cycle Budget: 50,000 u64 ops • CSP: script-src 'none'
+Tier-2 (QApp Worker)  • poet-collab.qapp       • SDK-01..10 Verified          • Arena: 42 MiB SlgArena
+Tier-3 (Solid LDP)    • solid-pod-bridge       • Port :8443 + ActivityPub     • Guard: CapabilityLease</pre>
+        </div>
+
+        <div class="card tier-block tier-dev">
+          <span class="tier-title-dev">3. Developer — `CapabilityLease` &amp; Deterministic `VBC1` Bytecode Verification</span>
+          <pre class="mono">CapabilityLease { app_id: "cpanel-controller.vibe", max_arena_bytes: 44_040_192, vbc1_cycles_remaining: 49_996, zero_javascript: true }</pre>
+        </div>
+
+        <div class="card cpanel-form-bar">
+          <form method="post" action="/cpanel/apps/install">
+            <input name="app_id" value="org.webizen.solid.pod">
+            <input name="pod_name" value="alice">
+            <button type="submit">Provision Solid Pod / QApp</button>
+          </form>
+        </div>
+      </section>
+
+      <!-- ================================================================= -->
+      <!-- PAGE 6: SSL, IDENTITY & SECURITY                                  -->
+      <!-- ================================================================= -->
+      <section id="page-security" class="cpanel-page">
+        <div class="page-header">
+          <div>
+            <div class="eyebrow">Module 6 • Replaces cPanel SSL/TLS, AutoSSL, SSH Keys &amp; ModSecurity</div>
+            <h1 class="page-title">SSL/TLS (`ACME` + `WebizenID-TLS`), Guardianship &amp; Cooperative Quorum</h1>
+          </div>
+          <span class="pill pill-emerald">Ed25519 + ML-KEM-768 + ML-DSA-65</span>
+        </div>
+
+        <div class="card tier-block tier-novice">
+          <span class="tier-title-novice">1. Novice — Automatic HTTPS, Device Pairing &amp; 2-of-3 Family Recovery</span>
+          <div class="grid-2">
+            <div class="subbox"><strong style="color: var(--emerald);">✓ Automatic HTTPS &amp; Zero-JS Browser Shield</strong><p class="muted">All websites and email aliases are encrypted and block third-party script injection (`script-src 'none'`).</div>
+            <div class="subbox"><strong style="color: var(--sky);">✓ 2-of-3 Family Guardian Recovery</strong><p class="muted">Encrypted `.q42j` Sanctuary Keep backups can be recovered with any 2 of your 3 designated family guardians.</p></div>
+          </div>
+        </div>
+
+        <div class="card tier-block tier-geek">
+          <span class="tier-title-geek">2. Tech Geek — Dual-Authority TLS (`ACME` + `WebizenID-TLS`) &amp; 32-Slot Quorum Queue</span>
+          <pre class="mono">Let's Encrypt ACME (ns.webcivics.net, alice.tld) : VALID (Auto-Renew in 64 days)
+WebizenID-TLS Client CA (Ed25519 + ML-KEM-768)   : SAN = did:qi:alice
+SuspendedTransactionQueue (32-Slot M-of-N)       : 2-of-3 Co-Steward Quorum Armed</pre>
+        </div>
+
+        <div class="card tier-block tier-dev">
+          <span class="tier-title-dev">3. Developer — `Argon2id + HKDF-SHA256` Sanctuary Key &amp; Who-Plane Collapse Detector</span>
+          <pre class="mono">derive_lane_key_argon2_hkdf(pin, salt, "qualia.sanctuary.keep.v1") -> 32-Byte Lane Key
+WhoAndHandlePlaneRegistry::trigger_domain_collapse_detector() -> Handle revoke != who-erase (0 owl:Thing violations)</pre>
+        </div>
+
+        <div class="card cpanel-form-bar">
+          <form method="post" action="/cpanel/security/issue-cert">
+            <input name="domain" value="ns.webcivics.net">
+            <input name="steward_did" value="did:qi:webcivics_steward">
+            <button type="submit">Issue WebizenID-TLS + ACME Certificate</button>
+          </form>
+        </div>
+      </section>
+
+      <!-- ================================================================= -->
+      <!-- PAGE 7: WALLET, EXCHANGES & BILLING                               -->
+      <!-- ================================================================= -->
+      <section id="page-wallet" class="cpanel-page">
+        <div class="page-header">
+          <div>
+            <div class="eyebrow">Module 7 • Replaces WHMCS Billing, Bandwidth Quotas &amp; Payment Gateways</div>
+            <h1 class="page-title">Multi-Chain Wallet, Coin Exchange Swap Desk &amp; Monthly Bill Shield</h1>
+          </div>
+          <span class="pill pill-emerald">$0.00 Overage Guaranteed</span>
+        </div>
+
+        <div class="card tier-block tier-novice">
+          <span class="tier-title-novice">1. Novice — Monthly Bill Shield ($12/mo Flat Ceiling • $0.00 Overage)</span>
+          <p class="muted">Excess download surges are automatically redirected (`HTTP 307`) to community peer-sharing so your monthly hosting bill never increases.</p>
+        </div>
+
+        <div class="card tier-block tier-geek">
+          <span class="tier-title-geek">2. Tech Geek — Multi-Blockchain Balances &amp; Multi-Exchange Swap Desk (`WP-07`)</span>
+          <div class="grid-3 mono">
+            <div class="subbox"><div class="muted">eCash (XEC)</div><strong style="color: var(--emerald);">1,450,000 XEC</strong></div>
+            <div class="subbox"><div class="muted">XRPL (XRP)</div><strong style="color: var(--sky);">240.5 XRP</strong></div>
+            <div class="subbox"><div class="muted">USDC (EVM L2)</div><strong style="color: var(--emerald);">185.00 USDC</strong></div>
+            <div class="subbox"><div class="muted">BTC Lightning</div><strong style="color: var(--amber);">420,000 sats</strong></div>
+            <div class="subbox"><div class="muted">ILP-STREAM</div><strong style="color: var(--purple);">Active Packets</strong></div>
+            <div class="subbox"><div class="muted">QualiaPQ-Ledger</div><strong style="color: var(--purple);">12,400 QPQ</strong></div>
+          </div>
+          <div class="subbox mono" style="color: var(--emerald);">
+            MultiExchangeSwapHub::select_best_quote() → NonCustodialDexAggregator (15 bps fee • check_usury &lt;= 250 bps PASS)
+          </div>
+        </div>
+
+        <div class="card tier-block tier-dev">
+          <span class="tier-title-dev">3. Developer — Post-Quantum `.q42j` Settlement Receipt (`ML-DSA-65`) &amp; `10x` Sunset</span>
+          <pre class="mono">QualiaPqJournalAnchor { epoch: 42, pq_scheme: "Hybrid-Ed25519+ML-DSA-65-FIPS204", batch_energy_millijoules: 12 (&lt;15 mJ), zero_pow: true }
+replay_obligation_pool_journal() -> Recouped 42% of 10x cap (Transitions to EnforcePermissiveCommons at 100%)</pre>
+        </div>
+
+        <div class="card cpanel-form-bar">
+          <form method="post" action="/cpanel/wallet/swap">
+            <input name="from_rail" value="USDC">
+            <input name="to_rail" value="XEC">
+            <input name="amount" value="100">
+            <button type="submit">Execute Anti-Usury Coin Swap</button>
+          </form>
+        </div>
+      </section>
+
+      <!-- ================================================================= -->
+      <!-- PAGE 8: JOBS, CRON & METRICS                                      -->
+      <!-- ================================================================= -->
+      <section id="page-jobs" class="cpanel-page">
+        <div class="page-header">
+          <div>
+            <div class="eyebrow">Module 8 • Replaces cPanel Cron Jobs, Resource Usage &amp; Raw Access Logs</div>
+            <h1 class="page-title">Background Jobs, Cron Scheduler, `SlgArena` Monitor &amp; Audit Logs</h1>
+          </div>
+          <span class="pill pill-purple">42 MiB SlgArena Sentinel</span>
+        </div>
+
+        <div class="card tier-block tier-novice">
+          <span class="tier-title-novice">1. Novice — Automatic Nightly Backups &amp; Quiet Background Maintenance</span>
+          <div class="grid-3">
+            <div class="subbox"><strong style="color: var(--emerald);">✓ Nightly Encrypted Backup</strong><p class="muted">Runs at 02:00 UTC. Verified 6h ago.</p></div>
+            <div class="subbox"><strong style="color: var(--sky);">✓ Community Library Sync</strong><p class="muted">Checks `WebCivics/ns` peers every 6h.</p></div>
+            <div class="subbox"><strong style="color: var(--purple);">✓ Reasoning Memory</strong><p class="muted">Using 9.5% of 42 MiB Sentinel.</p></div>
+          </div>
+        </div>
+
+        <div class="card tier-block tier-geek">
+          <span class="tier-title-geek">2. Tech Geek — Cron / 20 Hz FixedTick Scheduler &amp; Resumable Job Queue</span>
+          <table class="mono">
+            <thead>
+              <tr><th>Schedule</th><th>VibeScript / Engine Job</th><th>Memory Budget</th><th>Status</th></tr>
+            </thead>
+            <tbody>
+              <tr><td>0 */6 * * *</td><td>ingest::verify_or_incremental_sync("WebCivics/ns")</td><td>256 MiB ColdBounded</td><td style="color: var(--emerald);">IDLE (Adopted Peer)</td></tr>
+              <tr><td>0 2 * * *</td><td>stewardship::shamir_q42j_snapshot(2_of_3)</td><td>42 MiB SlgArena</td><td style="color: var(--emerald);">OK</td></tr>
+              <tr><td>20 Hz Tick</td><td>qcdn::swarm_merkle_custody_heartbeat</td><td>0 B HotZeroHeap</td><td style="color: var(--sky);">ACTIVE (:4242)</td></tr>
+            </tbody>
+          </table>
+        </div>
+
+        <div class="card tier-block tier-dev">
+          <span class="tier-title-dev">3. Developer — `SlgArena` Sentinel &amp; `HotZeroHeap` Allocation Counter</span>
+          <pre class="mono">SlgArena Sentinel: 4,194,304 / 44,040,192 Bytes (87,381 / 917,504 NQuin slots used)
+Tier-1 HotZeroHeap Counter: 0 heap allocations across 142,890 DNS + Range-SPARQL evaluations</pre>
+        </div>
+
+        <div class="card cpanel-form-bar">
+          <form method="post" action="/cpanel/jobs/backup">
+            <input name="vault_name" value="sanctuary_keep.q42j">
+            <input name="threshold" value="2-of-3">
+            <button type="submit">Seal ChaCha20-Poly1305 + Shamir Backup</button>
+          </form>
+        </div>
+      </section>
+
+      <!-- ================================================================= -->
+      <!-- PAGE 9: P2P RESOURCE DELEGATION PERMITS & PRIORITY BUDGETS        -->
+      <!-- ================================================================= -->
+      <section id="page-delegation" class="cpanel-page">
+        <div class="page-header">
+          <div>
+            <div class="eyebrow">Module 9 • Social-Web &amp; P2P Compute, Bandwidth &amp; Storage Permits</div>
+            <h1 class="page-title">Delegated Resource Permits, Budgets &amp; Priority Load-Shedding (`P0..P3`)</h1>
+          </div>
+          <span class="pill pill-emerald">P0 Family &amp; Guardianship Always 100% Priority</span>
+        </div>
+
+        <div class="card tier-block tier-novice">
+          <span class="tier-title-novice">1. Novice — Share Spare Compute, Bandwidth &amp; Storage with Trusted Peers</span>
+          <p class="muted">
+            Issue permits allowing family members, social-web friends, or co-op partners to use spare server resources. Your own apps and family accounts (`P0`) are never throttled.
+          </p>
+          <table>
+            <thead>
+              <tr><th>Priority Tier</th><th>Grantee (`did:qi`)</th><th>Delegated Resource</th><th>Host Budget Ceiling</th></tr>
+            </thead>
+            <tbody>
+              <tr><td><span class="pill pill-emerald">P0 Guardianship</span></td><td class="mono">did:qi:family_household</td><td>Compute + Bandwidth + Storage</td><td>Admitted up to <strong>100%</strong></td></tr>
+              <tr><td><span class="pill pill-sky">P1 Trusted Social</span></td><td class="mono">did:qi:coop_alice</td><td>Compute (250k VBC1 ops) + Relay</td><td>Admitted up to <strong>95%</strong></td></tr>
+              <tr><td><span class="pill pill-amber">P2 Commons Peer</span></td><td class="mono">did:qi:forgefed_contributor</td><td>CI Compute + IPFS Seeding</td><td>Admitted up to <strong>80%</strong></td></tr>
+              <tr><td><span class="pill">P3 Public Guest</span></td><td class="mono">anonymous_guest</td><td>Best-Effort Range Queries</td><td>Admitted up to <strong>50%</strong> (Then P2P Offload)</td></tr>
+            </tbody>
+          </table>
+        </div>
+
+        <div class="card tier-block tier-geek">
+          <span class="tier-title-geek">2. Tech Geek — Interactive Host Budget Load-Shedding Simulator (`web.check_permit`)</span>
+          <p class="muted">Select a host budget utilization level below to see how `P0..P3` permits are admitted or shed:</p>
+          <div class="brand-row">
+            <label class="btn-label" for="bsim-45">Host Budget @ 45% (Normal)</label>
+            <label class="btn-label" for="bsim-65">Host Budget @ 65% (Busy)</label>
+            <label class="btn-label" for="bsim-85">Host Budget @ 85% (Heavy Load)</label>
+            <label class="btn-label" for="bsim-98">Host Budget @ 98% (Emergency Reserve)</label>
+          </div>
+
+          <div id="bsim-out-45" class="grid-4 bsim-out mono">
+            <div class="subbox" style="color: var(--emerald);"><strong>P0 (≤100%)</strong><div>✓ ADMITTED</div></div>
+            <div class="subbox" style="color: var(--emerald);"><strong>P1 (≤95%)</strong><div>✓ ADMITTED</div></div>
+            <div class="subbox" style="color: var(--emerald);"><strong>P2 (≤80%)</strong><div>✓ ADMITTED</div></div>
+            <div class="subbox" style="color: var(--emerald);"><strong>P3 (≤50%)</strong><div>✓ ADMITTED</div></div>
+          </div>
+          <div id="bsim-out-65" class="grid-4 bsim-out mono">
+            <div class="subbox" style="color: var(--emerald);"><strong>P0 (≤100%)</strong><div>✓ ADMITTED</div></div>
+            <div class="subbox" style="color: var(--emerald);"><strong>P1 (≤95%)</strong><div>✓ ADMITTED</div></div>
+            <div class="subbox" style="color: var(--emerald);"><strong>P2 (≤80%)</strong><div>✓ ADMITTED</div></div>
+            <div class="subbox" style="color: var(--amber);"><strong>P3 (≤50%)</strong><div>⏸ SHED → P2P (65% &gt; 50%)</div></div>
+          </div>
+          <div id="bsim-out-85" class="grid-4 bsim-out mono">
+            <div class="subbox" style="color: var(--emerald);"><strong>P0 (≤100%)</strong><div>✓ ADMITTED</div></div>
+            <div class="subbox" style="color: var(--emerald);"><strong>P1 (≤95%)</strong><div>✓ ADMITTED</div></div>
+            <div class="subbox" style="color: var(--amber);"><strong>P2 (≤80%)</strong><div>⏸ SHED → P2P (85% &gt; 80%)</div></div>
+            <div class="subbox" style="color: var(--amber);"><strong>P3 (≤50%)</strong><div>⏸ SHED → P2P (85% &gt; 50%)</div></div>
+          </div>
+          <div id="bsim-out-98" class="grid-4 bsim-out mono">
+            <div class="subbox" style="color: var(--emerald);"><strong>P0 (≤100%)</strong><div>✓ ADMITTED (Family/Emergency)</div></div>
+            <div class="subbox" style="color: var(--amber);"><strong>P1 (≤95%)</strong><div>⏸ SHED (98% &gt; 95%)</div></div>
+            <div class="subbox" style="color: var(--amber);"><strong>P2 (≤80%)</strong><div>⏸ SHED (98% &gt; 80%)</div></div>
+            <div class="subbox" style="color: var(--amber);"><strong>P3 (≤50%)</strong><div>⏸ SHED (98% &gt; 50%)</div></div>
+          </div>
+        </div>
+
+        <div class="card tier-block tier-dev">
+          <span class="tier-title-dev">3. Developer — 48-Byte `NQuin` Deontic Permit (`OP_PERMIT = 0x11` / `DEFEATER_BIT`)</span>
+          <pre class="mono">= web.check_permit(1, 85, 1000, 250000)
+// Returns: { admitted: true, status: "Admitted", tier_ceiling_pct: 95, remaining_peer_units: 249000 }</pre>
+        </div>
+
+        <div class="card cpanel-form-bar">
+          <form method="post" action="/cpanel/delegation/issue">
+            <input name="grantee_did" value="did:qi:bob">
+            <input name="resource" value="Compute">
+            <input name="tier" value="P1">
+            <input name="quota" value="500">
+            <button type="submit">Issue P2P Resource Delegation Permit</button>
+          </form>
+        </div>
+      </section>
+
+      <!-- ================================================================= -->
+      <!-- PAGE 10: WEBIZEN GIT FORGE (Q-GIT — FULL GITHUB ALTERNATIVE)      -->
+      <!-- ================================================================= -->
+      <section id="page-git" class="cpanel-page">
+        <div class="page-header">
+          <div>
+            <div class="eyebrow">Module 10 • Webizen Git Forge (`Q-Git`) — Decentralized GitHub Alternative</div>
+            <h1 class="page-title">Git Repositories, Code Tree, Quorum Pull Requests, ForgeFed Issues &amp; CI Actions</h1>
+          </div>
+          <span class="pill pill-purple">HTTPS + SSH + IPFS Packfile + WebTorrent WebSeed</span>
+        </div>
+
+        <div class="card tier-block tier-novice">
+          <span class="tier-title-novice">1. Novice — Hosted Git Projects &amp; Automatic P2P Mirroring</span>
+          <div class="grid-2">
+            <div class="subbox">
+              <div class="row-between"><strong class="mono" style="color: var(--sky);">WebCivics / ns</strong><span class="pill pill-emerald">Public Commons</span></div>
+              <p class="muted" style="margin-top:4px;">Human-Centric International Human-Rights, Stewardship &amp; Guardianship Ontologies</p>
+            </div>
+            <div class="subbox">
+              <div class="row-between"><strong class="mono" style="color: var(--sky);">WebCivics / webizen-qapps</strong><span class="pill pill-sky">Co-op Shared</span></div>
+              <p class="muted" style="margin-top:4px;">Zero-JS VibeScript &amp; Poet QApps conforming to `qualia-app-contract` (`SDK-01..10`)</p>
+            </div>
+          </div>
+        </div>
+
+        <div class="card tier-block tier-geek">
+          <div class="row-between">
+            <div>
+              <span class="tier-title-geek mono">WebCivics / ns</span>
+              <span class="muted mono" style="margin-left: 8px;">(branch: main • HEAD: 8f2a99c1a1b2c3d4)</span>
+            </div>
+            <div class="brand-row">
+              <label class="btn-label" for="gtab-code">1. Code &amp; Files</label>
+              <label class="btn-label" for="gtab-prs">2. Pull Requests (1)</label>
+              <label class="btn-label" for="gtab-issues">3. Federated Issues (2)</label>
+              <label class="btn-label" for="gtab-actions">4. CI Actions &amp; P2P</label>
+            </div>
+          </div>
+
+          <div class="subbox mono">
+            <div>HTTPS/SSH: <span style="color: var(--sky);">git@ns.webcivics.net:WebCivics/ns.git</span></div>
+            <div>IPFS Pack: <span style="color: var(--emerald);">ipfs://bafkreig88f142a9c019gitbundle</span></div>
+            <div>WebTorrent: <span style="color: var(--purple);">magnet:?xt=urn:btih:88f142...&amp;ws=https://ns.webcivics.net/git/WebCivics/ns.bundle</span></div>
+          </div>
+
+          <div id="gpanel-code" class="git-subpanel">
+            <pre class="mono">// File: core-ontologies/agent-accountability.n3
+@prefix wc: &lt;https://webcivics.github.io/ns/accountability#&gt; .
+@prefix rdfs: &lt;http://www.w3.org/2000/01/rdf-schema#&gt; .
+@prefix sh: &lt;http://www.w3.org/ns/shacl#&gt; .
+
+# Invariant: Natural persons are not identity assets; instruments are not peers.
+# SHACL Non-Thing Rule: NaturalAgent MUST NEVER subclass owl:Thing.
+wc:NaturalAgent a rdfs:Class , sh:NodeShape ;
+    sh:property wc:GuardianshipAndCapacityShape .</pre>
+          </div>
+
+          <div id="gpanel-prs" class="git-subpanel">
+            <div id="pr42-open-banner" class="subbox">
+              <div class="row-between">
+                <strong>PR #42: Add Guardianship &amp; Capacity SHACL shapes for dependent care</strong>
+                <span class="pill pill-amber mono">Quorum: 1 / 2 Co-Stewards • CI: PASSED</span>
+              </div>
+              <pre class="mono" style="margin: 8px 0; color: var(--emerald);">+ wc:DependentCapacityShape a sh:NodeShape ;
++     sh:targetClass wc:SupportedDependent ;
++     sh:property [ sh:path wc:hasGuardian ; sh:minCount 1 ] .</pre>
+              <label class="btn-label" for="pr42-merge-toggle" style="background: var(--emerald); color: #082f49;">
+                ✓ Co-Sign with `did:qi` (2/2 Quorum) &amp; Merge PR #42
+              </label>
+            </div>
+            <div id="pr42-merged-banner" class="subbox mono" style="color: var(--emerald);">
+              ✓ PR #42 MERGED into `main` (2/2 Cooperative Quorum Verified) • Minted 48-Byte `NQuin` Contributor Receipt into `.q42j` Permissive Commons Pool!
+            </div>
+          </div>
+
+          <div id="gpanel-issues" class="git-subpanel">
+            <div class="subbox row-between">
+              <span><strong>#19 [ForgeFed]</strong> Add HTTP 206 Range-SPARQL test vectors for partial-CAR CIDv1 (<span class="mono">did:qi:alice@coop.civics.au</span>)</span>
+              <span class="pill pill-purple">ActivityPub Federated</span>
+            </div>
+            <div class="subbox row-between">
+              <span><strong>#18</strong> Verify 10x Commons Obligation Pool sunset on ontology releases (<span class="mono">did:qi:tim_holborn</span>)</span>
+              <span class="pill pill-sky">WP-07 Economics</span>
+            </div>
+          </div>
+
+          <div id="gpanel-actions" class="git-subpanel">
+            <pre class="mono" style="color: var(--emerald);">✓ Pipeline #108 • Trigger: git push main • Permit: P1 Compute (42 MiB SlgArena • Zero-JS)
+1. check_human_centric_nomenclature() ...................... PASS
+2. check_shacl_non_thing_rule() ............................ PASS (18 classes uplifted)
+3. check_zero_javascript_bundle() .......................... PASS (script-src 'none')
+4. publish_multi_protocol_bundle(IPFS + WebTorrent + 206) .. PASS</pre>
+          </div>
+        </div>
+
+        <div class="card tier-block tier-dev">
+          <span class="tier-title-dev">3. Developer — `.q42j` Contributor Provenance `NQuin` &amp; SHACL CI Gate</span>
+          <pre class="mono">GitPullRequest::try_merge() -&gt; NQuin {
+  subject:   q_hash("did:qi:contributor_alice"),
+  predicate: pack_predicate("https://ns.webcivics.net/git#mergedContributionToRepo", OP_OBLIGATE=0x10, false),
+  object:    commit_oid_token_60bit,
+  context:   pack_context(repo_hash, SensitivityClass::Public),
+  metadata:  pack_metadata(EnforcePermissiveCommons, pr_number=42, epoch=2026),
+  parity:    XOR_FOLD_VERIFIED ✓
+}</pre>
+        </div>
+
+        <div class="card cpanel-form-bar">
+          <form method="post" action="/cpanel/git/create-repo">
+            <input name="repo_name" value="human-rights-ontologies">
+            <input name="quorum_m" value="2">
+            <button type="submit">Initialize Bare Git Repository</button>
+          </form>
+        </div>
+      </section>
+
+      <!-- ================================================================= -->
+      <!-- PAGE 11: VIBE 3D ASSET, PGA MOTOR & QBDL .HMC SCENE FORGE          -->
+      <!-- ================================================================= -->
+      <section class="page cpanel-page" id="page-studio-3d">
+        <div class="page-header">
+          <div>
+            <div class="eyebrow">Module 11 • AAA Film-Level Volumetric 3D Asset, PBR Material &amp; QBDL `.hmc` Scene Forge</div>
+            <h1 class="page-title">Vibe 3D Asset &amp; QBDL `.hmc` Scene Forge (`PGA G(3,0,1)` Motors + 6-Facet PBR)</h1>
+          </div>
+          <span class="pill pill-sky">Zero-JS • CSS3D + SVG Volumetric Viewport</span>
+        </div>
+
+        <div class="card tier-block tier-novice">
+          <div class="row-between">
+            <span class="tier-title-novice">1. Novice — 3D Scene &amp; World Studio (1-Click Sanctuary &amp; Commons Worlds)</span>
+            <span class="pill pill-emerald">60 FPS Deterministic • Peer-Seeded `.hmc`</span>
+          </div>
+          <p class="muted">
+            Build interactive 3D rooms, community plazas, and educational worlds using ready-made geometric primitives, natural lighting presets, and zero-JavaScript peer streaming.
+          </p>
+        </div>
+
+        <div class="card">
+          <div class="row-between" style="margin-bottom: 12px;">
+            <div>
+              <strong style="color: var(--sky);">AAA Volumetric 3D Holographic Viewport (`Tensor10D` → 3D Projection)</strong>
+              <div class="muted">Pure-CSS Camera Orbit &amp; 6-Facet PBR Shader Selector (Zero JavaScript Execution)</div>
+            </div>
+            <div class="brand-row">
+              <label class="btn-label" for="mesh-dome">Mesh: Geodesic Dome</label>
+              <label class="btn-label" for="mesh-torus">Mesh: Torus-Knot Core</label>
+              <label class="btn-label" for="mesh-spire">Mesh: Crystal Spire</label>
+              <label class="btn-label" for="mesh-ring">Mesh: Orbital Ring</label>
+              <label class="btn-label" for="cam-iso">Camera: Isometric</label>
+              <label class="btn-label" for="cam-zenith">Camera: Zenith</label>
+              <label class="btn-label" for="cam-cinema">Camera: Cinema</label>
+              <label class="btn-label" for="shd-plasma">Shader: Plasma</label>
+              <label class="btn-label" for="shd-obsidian">Shader: Obsidian</label>
+              <label class="btn-label" for="shd-crystal">Shader: Crystal</label>
+            </div>
+          </div>
+
+          <div class="holo-stage">
+            <svg class="holo-svg" viewBox="0 0 880 360" xmlns="http://www.w3.org/2000/svg" role="img" aria-label="AAA Volumetric 3D Holographic Viewport">
+              <defs>
+                <filter id="holo-bloom" x="-25%" y="-25%" width="150%" height="150%">
+                  <feGaussianBlur in="SourceGraphic" stdDeviation="5" result="blur" />
+                  <feSpecularLighting in="blur" surfaceScale="4" specularConstant="0.95" specularExponent="26" lighting-color="#38bdf8" result="spec">
+                    <fePointLight x="440" y="95" z="240" />
+                  </feSpecularLighting>
+                  <feMerge>
+                    <feMergeNode in="blur" />
+                    <feMergeNode in="spec" />
+                    <feMergeNode in="SourceGraphic" />
+                  </feMerge>
+                </filter>
+                <radialGradient id="holo-core-grad" cx="50%" cy="48%" r="54%">
+                  <stop offset="0%" stop-color="#38bdf8" stop-opacity="0.95" />
+                  <stop offset="48%" stop-color="#c084fc" stop-opacity="0.58" />
+                  <stop offset="100%" stop-color="#050811" stop-opacity="0.0" />
+                </radialGradient>
+                <linearGradient id="pbr-facet-grad" x1="0%" y1="0%" x2="100%" y2="100%">
+                  <stop offset="0%" stop-color="#38bdf8" stop-opacity="0.72" />
+                  <stop offset="52%" stop-color="#818cf8" stop-opacity="0.44" />
+                  <stop offset="100%" stop-color="#0f172a" stop-opacity="0.88" />
+                </linearGradient>
+                <linearGradient id="grid-line-grad" x1="0%" y1="0%" x2="100%" y2="0%">
+                  <stop offset="0%" stop-color="#38bdf8" stop-opacity="0.05" />
+                  <stop offset="50%" stop-color="#38bdf8" stop-opacity="0.52" />
+                  <stop offset="100%" stop-color="#c084fc" stop-opacity="0.05" />
+                </linearGradient>
+              </defs>
+
+              <!-- Perspective 10D Floor Grid -->
+              <g stroke="url(#grid-line-grad)" stroke-width="1">
+                <line x1="60" y1="320" x2="820" y2="320" />
+                <line x1="110" y1="290" x2="770" y2="290" />
+                <line x1="160" y1="264" x2="720" y2="264" />
+                <line x1="210" y1="242" x2="670" y2="242" />
+                <line x1="260" y1="224" x2="620" y2="224" />
+                <line x1="440" y1="210" x2="80" y2="335" />
+                <line x1="440" y1="210" x2="220" y2="335" />
+                <line x1="440" y1="210" x2="360" y2="335" />
+                <line x1="440" y1="210" x2="520" y2="335" />
+                <line x1="440" y1="210" x2="660" y2="335" />
+                <line x1="440" y1="210" x2="800" y2="335" />
+              </g>
+
+              <!-- Volumetric Aura Core -->
+              <circle class="holo-core" cx="440" cy="175" r="116" fill="url(#holo-core-grad)" />
+
+              <!-- Orbital Stewardship Rings -->
+              <g class="orbit-ring" filter="url(#holo-bloom)" fill="none">
+                <ellipse cx="440" cy="175" rx="188" ry="68" stroke="#38bdf8" stroke-width="1.6" stroke-dasharray="10 6" />
+                <ellipse cx="440" cy="175" rx="146" ry="104" stroke="#c084fc" stroke-width="1.4" stroke-dasharray="6 8" />
+                <circle cx="440" cy="175" r="92" stroke="#34d399" stroke-width="1.5" stroke-opacity="0.78" />
+              </g>
+
+              <!-- MESH 1: Depth-Sorted 3D Geodesic Manifold Dome -->
+              <g id="layer-mesh-dome" class="mesh-layer" filter="url(#holo-bloom)" stroke-linejoin="round">
+                <polygon points="440,68 492,96 440,124" fill="url(#pbr-facet-grad)" stroke="#38bdf8" stroke-width="1.5" />
+                <polygon points="440,68 388,96 440,124" fill="url(#pbr-facet-grad)" stroke="#38bdf8" stroke-width="1.5" />
+                <polygon points="388,96 356,152 408,168 440,124" fill="url(#pbr-facet-grad)" stroke="#c084fc" stroke-width="1.5" />
+                <polygon points="492,96 524,152 472,168 440,124" fill="url(#pbr-facet-grad)" stroke="#38bdf8" stroke-width="1.5" />
+                <polygon points="440,124 408,168 440,214 472,168" fill="rgba(56,189,248,0.34)" stroke="#34d399" stroke-width="1.8" />
+                <polygon points="356,152 376,222 440,214 408,168" fill="url(#pbr-facet-grad)" stroke="#c084fc" stroke-width="1.5" />
+                <polygon points="524,152 504,222 440,214 472,168" fill="url(#pbr-facet-grad)" stroke="#38bdf8" stroke-width="1.5" />
+                <polygon points="376,222 440,276 440,214" fill="url(#pbr-facet-grad)" stroke="#34d399" stroke-width="1.5" />
+                <polygon points="504,222 440,276 440,214" fill="url(#pbr-facet-grad)" stroke="#38bdf8" stroke-width="1.5" />
+              </g>
+
+              <!-- MESH 2: Depth-Sorted 3D Torus-Knot Quantum Core -->
+              <g id="layer-mesh-torus" class="mesh-layer" filter="url(#holo-bloom)" fill="none" stroke-linecap="round">
+                <path d="M 358 148 C 392 68, 488 68, 522 148 C 554 224, 462 278, 440 198 C 418 278, 326 224, 358 148 Z" fill="rgba(192,132,252,0.18)" stroke="#c084fc" stroke-width="4.5" />
+                <path d="M 378 196 C 340 124, 440 72, 440 144 C 440 72, 540 124, 502 196 C 470 256, 410 256, 378 196 Z" fill="rgba(56,189,248,0.22)" stroke="#38bdf8" stroke-width="3.2" />
+                <circle cx="440" cy="175" r="28" fill="rgba(52,211,153,0.35)" stroke="#34d399" stroke-width="2.4" />
+              </g>
+
+              <!-- MESH 3: Depth-Sorted 3D Crystal Lattice Spire -->
+              <g id="layer-mesh-spire" class="mesh-layer" filter="url(#holo-bloom)" stroke-linejoin="round">
+                <polygon points="440,52 486,162 440,192" fill="rgba(56,189,248,0.42)" stroke="#38bdf8" stroke-width="1.8" />
+                <polygon points="440,52 394,162 440,192" fill="rgba(192,132,252,0.32)" stroke="#c084fc" stroke-width="1.8" />
+                <polygon points="394,162 440,292 440,192" fill="rgba(52,211,153,0.28)" stroke="#34d399" stroke-width="1.8" />
+                <polygon points="486,162 440,292 440,192" fill="url(#pbr-facet-grad)" stroke="#38bdf8" stroke-width="1.8" />
+                <polygon points="352,188 384,132 406,198 374,244" fill="url(#pbr-facet-grad)" stroke="#c084fc" stroke-width="1.4" />
+                <polygon points="528,188 496,132 474,198 506,244" fill="url(#pbr-facet-grad)" stroke="#34d399" stroke-width="1.4" />
+              </g>
+
+              <!-- MESH 4: Depth-Sorted 3D Orbital Stewardship Ring -->
+              <g id="layer-mesh-ring" class="mesh-layer" filter="url(#holo-bloom)" fill="none">
+                <ellipse cx="440" cy="175" rx="154" ry="54" stroke="#38bdf8" stroke-width="12" stroke-opacity="0.38" />
+                <ellipse cx="440" cy="175" rx="154" ry="54" stroke="#34d399" stroke-width="2.5" stroke-dasharray="18 8" />
+                <ellipse cx="440" cy="175" rx="98" ry="98" stroke="#c084fc" stroke-width="8" stroke-opacity="0.32" />
+                <polygon points="440,118 488,175 440,232 392,175" fill="url(#pbr-facet-grad)" stroke="#38bdf8" stroke-width="2" />
+              </g>
+
+              <!-- Camera Frustum Reticle & Telemetry HUD Overlay -->
+              <g stroke="#94a3b8" stroke-width="1.2" fill="none" opacity="0.75">
+                <path d="M 24 24 L 54 24 M 24 24 L 24 54" />
+                <path d="M 856 24 L 826 24 M 856 24 L 856 54" />
+                <path d="M 24 336 L 54 336 M 24 336 L 24 306" />
+                <path d="M 856 336 L 826 336 M 856 336 L 856 306" />
+              </g>
+              <text x="38" y="46" fill="#38bdf8" font-family="monospace" font-size="11">PGA G(3,0,1) Motor M = [1.000, 0.000, 0.259, 0.000 | 0.000, 1.250, 0.400, 0.000]</text>
+              <text x="38" y="64" fill="#34d399" font-family="monospace" font-size="11">Vibe3dAssetForge • 5-Facet MaterialSignature + RK4 SpringState3D • 0 B HotZeroHeap</text>
+              <text x="38" y="324" fill="#c084fc" font-family="monospace" font-size="11">QBDL .hmc Magic: 0x5142444C ("QBDL") • HTTP 206 SuperBlock: 40 KiB • Parity: VALID</text>
+            </svg>
+          </div>
+        </div>
+
+        <div class="card tier-block tier-geek">
+          <span class="tier-title-geek">2. Tech Geek — 6-Facet PBR Material Inspector &amp; 10-Family Animation Timeline</span>
+          <div class="grid-3 mono">
+            <div class="subbox">
+              <strong style="color: var(--sky);">OpticalFacet (Cook-Torrance)</strong>
+              <div class="muted" style="margin-top:4px;">IOR: 1.537 • Roughness: 0.14 • Metallic: 0.82 • Thin-Film: 420 nm</div>
+            </div>
+            <div class="subbox">
+              <strong style="color: var(--emerald);">MechanicalFacet (Continuum)</strong>
+              <div class="muted" style="margin-top:4px;">Young's Modulus: 240 GPa • Poisson: 0.27 • Density: 2,480 kg/m³</div>
+            </div>
+            <div class="subbox">
+              <strong style="color: var(--amber);">ThermalFacet + AcousticFacet</strong>
+              <div class="muted" style="margin-top:4px;">Temp: 293 K • Emissivity: 0.91 • Absorption: 0.18 @ 1 kHz</div>
+            </div>
+          </div>
+
+          <div class="subbox mono" style="margin-top: 8px;">
+            <div class="row-between" style="margin-bottom: 6px;">
+              <span>10-Family Multi-Track Animation Scrubber (`SkeletalRig`, `ClothXpbd`, `FluidSph`, `CameraDolly`, `DeonticPulse`)</span>
+              <span style="color: var(--emerald);">Frame 72 / 240 (60.0 Hz)</span>
+            </div>
+            <div class="timeline-track"><div class="timeline-fill" style="width: 68%;"></div></div>
+          </div>
+        </div>
+
+        <div class="card tier-block tier-dev">
+          <span class="tier-title-dev">3. Developer — `vibe_3d_studio` PGA $\mathcal{G}_{3,0,1}$ Motor Sandwich &amp; `.hmc` Wire Header</span>
+          <pre class="mono">PgaMotor3D::from_AxisAngle_Translation(axis: [0.0, 1.0, 0.0], rad: 0.5236, t: [0.0, 2.5, 0.8])
+  -&gt; sandwich_point([1.0, 0.0, 0.0]) • norm_squared() == 1.000000 (Unit Manifold Invariant Verified)
+HmcScenePackage { magic: *b"HMC1", version: 4, superblock_bytes: 40_960, shacl_non_thing_verified: true }</pre>
+        </div>
+
+        <div class="card cpanel-form-bar">
+          <form method="post" action="/cpanel/studio/forge-3d">
+            <input name="scene_id" value="sanctuary_commons_plaza">
+            <input name="mesh" value="GeodesicDome">
+            <input name="shader" value="AuroraPlasmaPBR">
+            <input name="family" value="CameraDolly">
+            <input name="preset" value="Cinema60fps">
+            <button type="submit">Forge 3D Scene &amp; Package QBDL .hmc</button>
+          </form>
+        </div>
+      </section>
+
+      <!-- ================================================================= -->
+      <!-- PAGE 12: VIBESCRIPT UI/UX & 4-MODALITY PRESENTATION SHEAF STUDIO   -->
+      <!-- ================================================================= -->
+      <section class="page cpanel-page" id="page-vibe-ux">
+        <div class="page-header">
+          <div>
+            <div class="eyebrow">Module 12 • Projectional AST (`0xD90502`), Node-Wire DAG &amp; 4-Modality Sheaf (`T69`)</div>
+            <h1 class="page-title">VibeScript UI/UX &amp; Multi-Modal Presentation Sheaf Studio</h1>
+          </div>
+          <span class="pill pill-purple">Visual + Haptic + Auditory + Braille (`⠺⠑⠃⠊⠵⠑⠝`)</span>
+        </div>
+
+        <div class="card tier-block tier-novice">
+          <div class="row-between">
+            <span class="tier-title-novice">1. Novice — Design &amp; Universal Accessibility Studio</span>
+            <span class="pill pill-emerald">WCAG AAA + Tactile &amp; Screen-Reader Native</span>
+          </div>
+          <p class="muted">
+            Every control in your Webizen apps automatically compiles into visual graphics, spatial audio cues, tactile force feedback, and Refreshable Braille (`⠺⠑⠃⠊⠵⠑⠝`) with zero JavaScript required.
+          </p>
+        </div>
+
+        <div class="card">
+          <span class="tier-title-geek">Interactive SVG Node-Wire DAG Canvas (`Ingest -> SHACL Uplift -> PGA 3D Forge -> Q-CDN Seed`)</span>
+          <div class="subbox" style="margin-top: 10px;">
+            <svg viewBox="0 0 860 150" width="100%" height="auto" xmlns="http://www.w3.org/2000/svg" role="img" aria-label="VibeScript Node-Wire DAG Canvas">
+              <defs>
+                <linearGradient id="wire-grad" x1="0%" y1="0%" x2="100%" y2="0%">
+                  <stop offset="0%" stop-color="#38bdf8" />
+                  <stop offset="50%" stop-color="#c084fc" />
+                  <stop offset="100%" stop-color="#34d399" />
+                </linearGradient>
+              </defs>
+              <!-- Cubic Bezier Node Wires -->
+              <path d="M 185 75 C 215 75, 225 75, 255 75" stroke="url(#wire-grad)" stroke-width="2.5" fill="none" />
+              <path d="M 415 75 C 445 75, 455 75, 485 75" stroke="url(#wire-grad)" stroke-width="2.5" fill="none" />
+              <path d="M 645 75 C 675 75, 685 75, 705 75" stroke="url(#wire-grad)" stroke-width="2.5" fill="none" />
+
+              <!-- Node 1: Ingest -->
+              <rect x="20" y="32" width="165" height="86" rx="10" fill="#0f172a" stroke="#38bdf8" stroke-width="1.8" />
+              <text x="34" y="58" fill="#38bdf8" font-family="monospace" font-size="12" font-weight="bold">1. Ingest (.ttl/.n3)</text>
+              <text x="34" y="78" fill="#94a3b8" font-family="monospace" font-size="11">WebCivics/ns Stream</text>
+              <text x="34" y="98" fill="#34d399" font-family="monospace" font-size="11">out: RawTriples</text>
+
+              <!-- Node 2: SHACL Uplift -->
+              <rect x="255" y="32" width="160" height="86" rx="10" fill="#0f172a" stroke="#c084fc" stroke-width="1.8" />
+              <text x="269" y="58" fill="#c084fc" font-family="monospace" font-size="12" font-weight="bold">2. SHACL Uplift</text>
+              <text x="269" y="78" fill="#94a3b8" font-family="monospace" font-size="11">0 owl:Thing Rule</text>
+              <text x="269" y="98" fill="#34d399" font-family="monospace" font-size="11">out: NQuin[48B]</text>
+
+              <!-- Node 3: PGA 3D Forge -->
+              <rect x="485" y="32" width="160" height="86" rx="10" fill="#0f172a" stroke="#fbbf24" stroke-width="1.8" />
+              <text x="499" y="58" fill="#fbbf24" font-family="monospace" font-size="12" font-weight="bold">3. PGA 3D Forge</text>
+              <text x="499" y="78" fill="#94a3b8" font-family="monospace" font-size="11">G(3,0,1) + Sheaf T69</text>
+              <text x="499" y="98" fill="#34d399" font-family="monospace" font-size="11">out: QBDL .hmc</text>
+
+              <!-- Node 4: Q-CDN Seed -->
+              <rect x="705" y="32" width="135" height="86" rx="10" fill="#0f172a" stroke="#34d399" stroke-width="1.8" />
+              <text x="719" y="58" fill="#34d399" font-family="monospace" font-size="12" font-weight="bold">4. Q-CDN Seed</text>
+              <text x="719" y="78" fill="#94a3b8" font-family="monospace" font-size="11">HTTP 206 + IPFS</text>
+              <text x="719" y="98" fill="#38bdf8" font-family="monospace" font-size="11">$0.00 Overage</text>
+            </svg>
+          </div>
+        </div>
+
+        <div class="card tier-block tier-geek">
+          <span class="tier-title-geek">2. Tech Geek — Composite Uplift Widget Gallery &amp; 4-Modality Presentation Sheaf Inspector</span>
+          <div class="grid-4 mono">
+            <div class="subbox">
+              <strong style="color: var(--sky);">`ui.range_interval`</strong>
+              <div class="muted" style="margin-top:4px;">Bounds: `[12.0 .. 42.0 MiB]` • Step: `0.5` • Zero-Heap Slice</div>
+            </div>
+            <div class="subbox">
+              <strong style="color: var(--emerald);">`ui.tag_input`</strong>
+              <div class="muted" style="margin-top:4px;">Tokens: `[#stewardship, #guardianship, #q42]`</div>
+            </div>
+            <div class="subbox">
+              <strong style="color: var(--amber);">`ui.combobox`</strong>
+              <div class="muted" style="margin-top:4px;">Selected: `PermissiveCommons` (Q42LEX 60-bit)</div>
+            </div>
+            <div class="subbox">
+              <strong style="color: var(--purple);">Belnap 4-Valued Badge</strong>
+              <div class="muted" style="margin-top:4px;">State: `True (0b01)` • Paraconsistent Isolation Ready</div>
+            </div>
+          </div>
+
+          <div class="grid-4 mono" style="margin-top: 8px;">
+            <div class="subbox">
+              <strong style="color: var(--sky);">1. Visual CSS/SVG</strong>
+              <div class="muted" style="margin-top:4px;">`grid-template: 12-col` • Specular Glass • WCAG 7.4:1</div>
+            </div>
+            <div class="subbox">
+              <strong style="color: var(--amber);">2. Haptic Force Envelope</strong>
+              <div class="muted" style="margin-top:4px;">Stiffness: `185 N/m` • Detent Pulse: `14 ms @ 180 Hz`</div>
+            </div>
+            <div class="subbox">
+              <strong style="color: var(--emerald);">3. Auditory Spatial Earcon</strong>
+              <div class="muted" style="margin-top:4px;">HRTF Azimuth: `-15°` • Pitch: `528 Hz` • Gain: `-12 dBFS`</div>
+            </div>
+            <div class="subbox">
+              <strong style="color: var(--purple);">4. Braille Unicode Cells</strong>
+              <div class="muted" style="margin-top:4px;">Cells: `⠺⠑⠃⠊⠵⠑⠝` (8-Dot Nemeth/UEB Verified)</div>
+            </div>
+          </div>
+        </div>
+
+        <div class="card tier-block tier-dev">
+          <span class="tier-title-dev">3. Developer — Live Projectional AST Editor (`TAG_VIBE_AST = 0xD90502`) &amp; Sheaf `T69`</span>
+          <pre class="mono">// CBOR-LD Projectional AST Header: 0xD9 0x05 0x02 (TAG_VIBE_AST = 1282)
+module webizen.ux.sheaf_studio;
+
+pure fn build_multimodal_widget(id: String, label: String) budget(steps: 300) -&gt; Record {
+    let range = ui.range_interval(id, 0, 100, 42);
+    let tags  = ui.tag_input("capabilities", ["VisualCssSvg", "HapticForce", "AuditoryEarcon", "BrailleCells"]);
+    let combo = ui.combobox("belnap_truth", "True_0b01");
+    return { ast_tag: 0xD90502, sheaf_table: "T69", braille: "⠺⠑⠃⠊⠵⠑⠝", widget: range, tags: tags, combo: combo };
+}</pre>
+        </div>
+
+        <div class="card cpanel-form-bar">
+          <form method="post" action="/cpanel/ux/compile-sheaf">
+            <input name="component_id" value="stewardship_bill_shield_slider">
+            <input name="label" value="Monthly Bill Shield ($12/mo Cap)">
+            <input name="vibe_source" value="ui.range_interval('bill_cap', 5, 25, 12)">
+            <button type="submit">Compile 4-Modality UI Sheaf (.cbor-ld)</button>
+          </form>
+        </div>
+      </section>
+
+    </main>
+
+    <footer style="margin-top: 32px; padding: 24px 16px; text-align: center; border-top: 1px solid var(--border); color: var(--muted); font-size: 11px; background: rgba(10, 15, 29, 0.65);">
+      <div style="font-weight: 600; color: var(--fg); margin-bottom: 6px; letter-spacing: 0.02em;">
+        Webizen-Host &mdash; Human-Centric Holographic Workbench &amp; Stewardship Control Panel
+      </div>
+      <div style="margin-bottom: 4px;">
+        Copyright &copy; 2026 <a href="https://www.linkedin.com/in/ubiquitous/" target="_blank" rel="noopener" style="color: var(--sky); text-decoration: none;">Timothy Charles Holborn</a> &bull;
+        <a href="mailto:timothy.holborn@gmail.com" style="color: var(--sky); text-decoration: none;">timothy.holborn@gmail.com</a>
+      </div>
+      <div>
+        Licensed under <a href="https://creativecommons.org/licenses/by-nc-nd/4.0/legalcode" target="_blank" rel="noopener" style="color: var(--emerald); text-decoration: none;">Attribution-NonCommercial-NoDerivatives 4.0 International (CC BY-NC-ND 4.0)</a>.
+      </div>
+    </footer>
+  </div>
+</div>
+
+  <!-- ===================================================================== -->
+  <!-- EMBEDDED VIBESCRIPT MODULE (`application/vibescript` — ZERO JS)       -->
+  <!-- ===================================================================== -->
+  <script type="application/vibescript" id="webizen-workbench-vibe">
+module webizen_host_cpanel;
+
+pure fn render_route(persona: String, page: String) budget(steps: 400) -> Record {
+    let view = ui.select_persona(persona, page);
+    let badge_patch = ui.patch("persona-badge", "textContent", view.badge);
+    let cbor_state = web.cbor_ld_response(200, "https://ns.webcivics.net/cpanel", view);
+    let resp = web.response(200, "text/html; charset=utf-8", view.badge);
+    return { view: view, patch: badge_patch, cbor_ld: cbor_state, response: resp };
+}
+
+pure fn verify_relationship_mail(alias: String, sender: String, allowed: String) budget(steps: 200) -> Record {
+    return web.route_mail(alias, sender, allowed);
+}
+
+pure fn check_peer_resource_permit(priority_tier: i64, host_util_pct: i64, req_units: i64, quota: i64) budget(steps: 200) -> Record {
+    return web.check_permit(priority_tier, host_util_pct, req_units, quota);
+}
+  </script>
+</body>
+</html>

@@ -7,6 +7,7 @@ license.workspace = true
 description = "WP-08: Human-Centric Poet Host Admin Workbench (Six Life Domains, Relationship-Scoped Mail, cPanel Parity) & Turnkey Linux VPS Installer"
 
 [dependencies]
+vibe = { workspace = true }
 webizen-host-core = { workspace = true }
 webizen-host-ingest = { workspace = true }
 webizen-host-namespace = { workspace = true }

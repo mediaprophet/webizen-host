@@ -190,11 +190,15 @@ pub fn format_quins_to_rdf(
                     .lexicon
                     .resolve(q.subject)
                     .unwrap_or_else(|| format!("urn:q42:hash:{:016x}", q.subject));
+                let p = vol
+                    .lexicon
+                    .resolve_predicate(q.predicate)
+                    .unwrap_or_else(|| format!("urn:q42:pred:{:016x}", q.predicate));
                 let o = vol
                     .lexicon
                     .resolve(q.object)
                     .unwrap_or_else(|| format!("urn:q42:obj:{:016x}", q.object));
-                let line = format!("<{s}> <urn:q42:pred:{:016x}> <{o}> .\n", q.predicate);
+                let line = format!("<{s}> <{p}> <{o}> .\n");
                 writer.write_all(line.as_bytes())?;
                 bytes_written += line.len();
             }
@@ -276,6 +280,7 @@ mod tests {
         .unwrap();
         let nt_str = String::from_utf8(buf).unwrap();
         assert!(nt_str.contains("https://ns.webcivics.net/agent#NaturalAgent"));
+        assert!(nt_str.contains("<https://ns.webcivics.net/hr#hasDignity>"));
 
         // Simulate US data-hub traffic surge against a 100 KiB hard cap
         let mut breaker = HardEgressCircuitBreaker::new_zero_overage(100 * 1024, 9);

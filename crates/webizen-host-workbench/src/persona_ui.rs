@@ -1,7 +1,7 @@
-//! Three-Persona Progressive-Disclosure cPanel Replacement Model (`Novice`, `TechGeek`, `Developer`)
-//! across all 8 Left-Sidebar Control Panel Pages for `webizen-host`.
+//! Three-Persona Progressive-Disclosure cPanel, Git, 3D Studio & VibeScript UX Replacement Model
+//! (`Novice`, `TechGeek`, `Developer`) across all 12 Left-Sidebar Control Panel Pages for `webizen-host`.
 //!
-//! All 8 functional cPanel replacement pages share one unified state engine (`AdaptiveHostWorkbench`)
+//! All 12 functional cPanel replacement pages share one unified state engine (`AdaptiveHostWorkbench`)
 //! and dynamically adapt their controls, tables, wizards, and diagnostics to the active `UserPersonaTier`:
 //! 1. `ControlPanelPage::DomainsAndDns` — Domains, Subdomains & Authoritative DNS Zone Editor
 //! 2. `ControlPanelPage::EmailAndAliases` — Email Accounts, Relationship-Scoped Aliases, Forwarders & DKIM/SPF/DMARC
@@ -11,12 +11,16 @@
 //! 6. `ControlPanelPage::SslIdentityAndSecurity` — ACME + `WebizenID-TLS`, SSH/WireGuard, Family Guardianship & Quorum
 //! 7. `ControlPanelPage::WalletExchangesAndBilling` — Multi-Chain Wallet, Multi-Exchange Swap Desk & Hard Monthly Cost-Cap
 //! 8. `ControlPanelPage::JobsCronAndMetrics` — Background Ontology Jobs, Cron/Tick Scheduler, `SlgArena` Monitor & Audit Logs
+//! 9. `ControlPanelPage::ResourceDelegationAndBudgets` — P2P Compute, Bandwidth & Storage Delegation Permits (`P0..P3`)
+//! 10. `ControlPanelPage::GitForgeAndRepositories` — Webizen Git Forge (`Q-Git` Decentralized GitHub Alternative)
+//! 11. `ControlPanelPage::Vibe3dAssetAndSceneForge` — Vibe 3D Asset, PGA Motor, PBR Material & QBDL `.hmc` Scene Forge
+//! 12. `ControlPanelPage::VibeUiUxAndSheafStudio` — VibeScript UI/UX Projectional AST & 4-Modality Presentation Sheaf Studio
 
 use crate::LifeDomain;
 use webizen_host_core::{validate_human_centric_nomenclature, NQuin};
 use webizen_host_economics::BlockchainRail;
 
-/// Embedded self-contained HTML/Tailwind UI bundle for the 8-Page Three-Persona cPanel Replacement Workbench.
+/// Embedded self-contained HTML/CSS/SVG UI bundle for the 12-Page Three-Persona cPanel Replacement Workbench.
 pub const BUNDLED_ADAPTIVE_WORKBENCH_HTML: &str = include_str!("../assets/index.html");
 
 /// The three target user groups supported across every page of the `webizen-host` Control Panel.
@@ -40,7 +44,7 @@ impl UserPersonaTier {
     }
 }
 
-/// All 10 Left-Sidebar cPanel & GitHub Replacement Pages in the `webizen-host` Admin Control Panel.
+/// All 12 Left-Sidebar cPanel, Git, 3D Studio & VibeScript UI/UX Pages in the `webizen-host` Admin Control Panel.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum ControlPanelPage {
     /// 1. Domains, Subdomains & DNS Zone Editor (A/AAAA/CNAME/MX/TXT, QDNF IPv6, Split-Horizon, 1-click connect)
@@ -63,10 +67,14 @@ pub enum ControlPanelPage {
     ResourceDelegationAndBudgets,
     /// 10. Webizen Git Forge (`Q-Git` — Decentralized GitHub Alternative: Repos, Code, PRs, Issues, P2P Bundles & CI)
     GitForgeAndRepositories,
+    /// 11. Vibe 3D Asset & Scene Forge (PGA G(3,0,1) Motors, 6-Facet PBR, 10-Family Animation & QBDL `.hmc`)
+    Vibe3dAssetAndSceneForge,
+    /// 12. VibeScript UI/UX & 4-Modality Presentation Sheaf Studio (Projectional AST, Node-Wire DAG & Sheaf T69)
+    VibeUiUxAndSheafStudio,
 }
 
 impl ControlPanelPage {
-    pub const ALL: [ControlPanelPage; 10] = [
+    pub const ALL: [ControlPanelPage; 12] = [
         Self::DomainsAndDns,
         Self::EmailAndAliases,
         Self::FilesAndStorage,
@@ -77,7 +85,26 @@ impl ControlPanelPage {
         Self::JobsCronAndMetrics,
         Self::ResourceDelegationAndBudgets,
         Self::GitForgeAndRepositories,
+        Self::Vibe3dAssetAndSceneForge,
+        Self::VibeUiUxAndSheafStudio,
     ];
+
+    pub const fn section_id(&self) -> &'static str {
+        match self {
+            Self::DomainsAndDns => "page-domains",
+            Self::EmailAndAliases => "page-email",
+            Self::FilesAndStorage => "page-files",
+            Self::OntologiesAndDatabases => "page-ontologies",
+            Self::AppsAndSolidPods => "page-apps",
+            Self::SslIdentityAndSecurity => "page-security",
+            Self::WalletExchangesAndBilling => "page-wallet",
+            Self::JobsCronAndMetrics => "page-jobs",
+            Self::ResourceDelegationAndBudgets => "page-delegation",
+            Self::GitForgeAndRepositories => "page-git",
+            Self::Vibe3dAssetAndSceneForge => "page-studio-3d",
+            Self::VibeUiUxAndSheafStudio => "page-vibe-ux",
+        }
+    }
 
     pub const fn sidebar_title(&self) -> &'static str {
         match self {
@@ -91,8 +118,70 @@ impl ControlPanelPage {
             Self::JobsCronAndMetrics => "Jobs, Cron & Metrics",
             Self::ResourceDelegationAndBudgets => "P2P Resource Permits & Budgets",
             Self::GitForgeAndRepositories => "Git Forge (GitHub Alternative)",
+            Self::Vibe3dAssetAndSceneForge => "3D Asset & Scene Forge",
+            Self::VibeUiUxAndSheafStudio => "VibeScript UI/UX & Sheaf Studio",
         }
     }
+
+    pub const fn persona_label(&self, persona: UserPersonaTier) -> &'static str {
+        match (self, persona) {
+            (Self::Vibe3dAssetAndSceneForge, UserPersonaTier::Novice) => "3D Scene & World Studio",
+            (Self::Vibe3dAssetAndSceneForge, UserPersonaTier::TechGeek) => "Vibe 3D Asset & QBDL .hmc Forge",
+            (Self::Vibe3dAssetAndSceneForge, UserPersonaTier::Developer) => "vibe_3d_studio (PGA Motors + PBR + .hmc)",
+            (Self::VibeUiUxAndSheafStudio, UserPersonaTier::Novice) => "Design & Accessibility Studio",
+            (Self::VibeUiUxAndSheafStudio, UserPersonaTier::TechGeek) => "VibeScript UI/UX & 4-Modality Sheaf Studio",
+            (Self::VibeUiUxAndSheafStudio, UserPersonaTier::Developer) => "vibe_ux_toolkit (Projectional AST + Sheaf T69)",
+            (page, _) => page.sidebar_title(),
+        }
+    }
+
+    pub const fn life_domain(&self) -> LifeDomain {
+        match self {
+            Self::DomainsAndDns | Self::FilesAndStorage => LifeDomain::World,
+            Self::EmailAndAliases | Self::GitForgeAndRepositories => LifeDomain::Relations,
+            Self::OntologiesAndDatabases => LifeDomain::Memory,
+            Self::AppsAndSolidPods | Self::Vibe3dAssetAndSceneForge => LifeDomain::Practice,
+            Self::SslIdentityAndSecurity | Self::ResourceDelegationAndBudgets => LifeDomain::Care,
+            Self::WalletExchangesAndBilling | Self::JobsCronAndMetrics | Self::VibeUiUxAndSheafStudio => {
+                LifeDomain::Instruments
+            }
+        }
+    }
+
+    pub const fn form_action_path(&self) -> &'static str {
+        match self {
+            Self::DomainsAndDns => "/cpanel/domains/add",
+            Self::EmailAndAliases => "/cpanel/email/add",
+            Self::FilesAndStorage => "/cpanel/files/publish",
+            Self::OntologiesAndDatabases => "/cpanel/ontologies/sparql",
+            Self::AppsAndSolidPods => "/cpanel/apps/install",
+            Self::SslIdentityAndSecurity => "/cpanel/security/issue-cert",
+            Self::WalletExchangesAndBilling => "/cpanel/wallet/swap",
+            Self::JobsCronAndMetrics => "/cpanel/jobs/backup",
+            Self::ResourceDelegationAndBudgets => "/cpanel/delegation/issue",
+            Self::GitForgeAndRepositories => "/cpanel/git/create-repo",
+            Self::Vibe3dAssetAndSceneForge => "/cpanel/studio/forge-3d",
+            Self::VibeUiUxAndSheafStudio => "/cpanel/ux/compile-sheaf",
+        }
+    }
+}
+
+/// Build the 12-item progressive-disclosure left sidebar for the specified `UserPersonaTier`.
+pub const fn build_sidebar_for_persona(
+    persona: UserPersonaTier,
+) -> [(ControlPanelPage, &'static str, LifeDomain); 12] {
+    let mut out = [(
+        ControlPanelPage::DomainsAndDns,
+        "",
+        LifeDomain::World,
+    ); 12];
+    let mut idx = 0;
+    while idx < 12 {
+        let p = ControlPanelPage::ALL[idx];
+        out[idx] = (p, p.persona_label(persona), p.life_domain());
+        idx += 1;
+    }
+    out
 }
 
 /// Simplified, jargon-free view model for **Group 1: Novice Users**.
@@ -136,7 +225,7 @@ pub struct DeveloperViewSummary {
     pub cscp_08_09_verified: bool,
 }
 
-/// Unified workbench state that seamlessly switches across all 8 cPanel replacement pages and
+/// Unified workbench state that seamlessly switches across all 12 cPanel replacement pages and
 /// all 3 persona tiers (`Novice`, `TechGeek`, `Developer`).
 #[derive(Clone, Debug)]
 pub struct AdaptiveHostWorkbench {
@@ -193,9 +282,15 @@ impl AdaptiveHostWorkbench {
         self.active_persona = persona;
     }
 
-    /// Navigate to any of the 8 left-sidebar cPanel replacement pages while preserving the active persona.
+    /// Navigate to any of the 12 left-sidebar cPanel replacement pages while preserving the active persona.
     pub fn navigate_page(&mut self, page: ControlPanelPage) {
         self.active_page = page;
+        self.active_life_domain = page.life_domain();
+    }
+
+    /// Build the 12-page left-sidebar model for the currently active persona tier.
+    pub fn build_sidebar_for_persona(&self) -> [(ControlPanelPage, &'static str, LifeDomain); 12] {
+        build_sidebar_for_persona(self.active_persona)
     }
 
     /// Project the state for **Group 1: Novice Users**.
@@ -287,9 +382,23 @@ mod tests {
     use super::*;
 
     #[test]
-    fn adaptive_workbench_supports_all_10_cpanel_and_git_pages_and_3_personas() {
+    fn adaptive_workbench_supports_all_12_cpanel_git_studio_and_ux_pages_and_3_personas() {
         let mut wb = AdaptiveHostWorkbench::new_default("ns.webcivics.net").unwrap();
-        assert_eq!(ControlPanelPage::ALL.len(), 10);
+        assert_eq!(ControlPanelPage::ALL.len(), 12);
+
+        for persona in [
+            UserPersonaTier::Novice,
+            UserPersonaTier::TechGeek,
+            UserPersonaTier::Developer,
+        ] {
+            wb.switch_persona(persona);
+            let sidebar = wb.build_sidebar_for_persona();
+            assert_eq!(sidebar.len(), 12);
+            for (page, label, domain) in sidebar {
+                assert_eq!(domain, page.life_domain());
+                assert!(validate_human_centric_nomenclature(label).is_ok());
+            }
+        }
 
         for page in ControlPanelPage::ALL {
             wb.navigate_page(page);
@@ -297,26 +406,25 @@ mod tests {
             assert_eq!(wb.tech_geek_view().active_page, page);
             assert_eq!(wb.developer_view().active_page, page);
             assert!(validate_human_centric_nomenclature(page.sidebar_title()).is_ok());
-        }
-
-        // Verify bundled HTML contains all 10 cPanel/Git pages, all 3 persona modes, and honours Human-Centric Nomenclature
-        for page_id in [
-            "page-domains",
-            "page-email",
-            "page-files",
-            "page-ontologies",
-            "page-apps",
-            "page-security",
-            "page-wallet",
-            "page-jobs",
-            "page-delegation",
-            "page-git",
-        ] {
+            assert!(validate_human_centric_nomenclature(page.form_action_path()).is_ok());
+            let action_attr = format!("action=\"{}\"", page.form_action_path());
             assert!(
-                BUNDLED_ADAPTIVE_WORKBENCH_HTML.contains(page_id),
-                "missing cPanel page section: {page_id}"
+                BUNDLED_ADAPTIVE_WORKBENCH_HTML.contains(&action_attr),
+                "missing Zero-JS form action attribute: {action_attr}"
+            );
+            assert!(
+                BUNDLED_ADAPTIVE_WORKBENCH_HTML.contains(page.section_id()),
+                "missing cPanel page section: {}",
+                page.section_id()
             );
         }
+
         assert!(validate_human_centric_nomenclature(BUNDLED_ADAPTIVE_WORKBENCH_HTML).is_ok());
+        let js_audit =
+            crate::VibeWebServerEngine::verify_zero_javascript_html(BUNDLED_ADAPTIVE_WORKBENCH_HTML)
+                .unwrap();
+        assert!(js_audit.zero_executable_js_tags);
+        assert!(js_audit.zero_inline_js_handlers);
+        assert_eq!(js_audit.embedded_vibescript_modules, 1);
     }
 }

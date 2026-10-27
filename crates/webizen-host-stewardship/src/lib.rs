@@ -16,8 +16,10 @@
 //!      *"Natural persons are not identity assets; instruments are not peers"*).
 
 use webizen_host_core::{
-    crc32c_bytes, pack_context, pack_metadata, pack_predicate, q_hash, q_hash_bytes, NQuin,
-    PermissiveRoutingLane, SensitivityClass, OP_AUTHORIZATION_GRANT, OP_PARACONSISTENT_REVIEW,
+    chacha20_poly1305_open, chacha20_poly1305_seal, crc32c_bytes, hkdf_sha256, hmac_sha256,
+    pack_context, pack_metadata, pack_predicate, pbkdf2_hmac_sha256, q_hash, sha256,
+    shamir_reconstruct_gf256, shamir_split_gf256, NQuin, PermissiveRoutingLane, SensitivityClass,
+    OP_AUTHORIZATION_GRANT, OP_PARACONSISTENT_REVIEW,
 };
 
 pub const SUSPENDED_TX_QUEUE_SLOTS: usize = 32;
@@ -59,7 +61,6 @@ impl WhoAndHandlePlaneRegistry {
                 found = true;
             }
         }
-        // Invariant: Who-Plane and volumes remain 100% intact and reachable over native QDNF QResolve
         debug_assert!(!self.natural_agents_did_qi.is_empty());
         debug_assert!(self.sanctuary_keep_volumes_intact);
         debug_assert!(self.qresolve_overlay_reachable);
@@ -67,14 +68,27 @@ impl WhoAndHandlePlaneRegistry {
     }
 }
 
+/// Configurable PBKDF2-HMAC-SHA256 key-stretching policy (`AGENTS.md` §2-B `agency.rs` 310,000-iteration requirement).
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum KeyDerivationPolicy {
+    InteractiveTest4096,
+    RetailProduction310000,
+}
+
+impl KeyDerivationPolicy {
+    pub const fn iterations(&self) -> u32 {
+        match self {
+            Self::InteractiveTest4096 => 4_096,
+            Self::RetailProduction310000 => 310_000,
+        }
+    }
+}
+
 /// Family / Household Guardianship & Legal Capacity profile (`wellfare-core/src/guardianship.rs` + `modalities/capacity.rs`).
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum FamilyMemberRole {
     AdultStewardGuardian,
-    SupportedDependentOrInfant {
-        guardian_did_hash: u64,
-        age_years: u8,
-    },
+    SupportedDependentOrInfant { guardian_did_hash: u64, age_years: u8 },
 }
 
 #[derive(Clone, Debug)]
@@ -84,19 +98,28 @@ pub struct FamilyHouseholdStewardship {
 }
 
 impl FamilyHouseholdStewardship {
-    /// Derive a per-member isolated Sanctuary Keep lane key using domain-separated key expansion.
+    /// Derive a per-member isolated Sanctuary Keep lane key using RFC 8018 PBKDF2-HMAC-SHA256
+    /// followed by RFC 5869 HKDF-SHA256 domain-separated key expansion.
     pub fn derive_member_lane_key(pin: &str, salt: &[u8], member_did: &str) -> [u8; 32] {
+        Self::derive_member_lane_key_with_policy(
+            pin,
+            salt,
+            member_did,
+            KeyDerivationPolicy::InteractiveTest4096,
+        )
+    }
+
+    /// Derive a per-member isolated Sanctuary Keep lane key under an explicit `KeyDerivationPolicy`.
+    pub fn derive_member_lane_key_with_policy(
+        pin: &str,
+        salt: &[u8],
+        member_did: &str,
+        policy: KeyDerivationPolicy,
+    ) -> [u8; 32] {
+        let mut master = [0u8; 32];
+        pbkdf2_hmac_sha256(pin.as_bytes(), salt, policy.iterations(), &mut master);
         let mut out = [0u8; 32];
-        for (i, chunk) in out.chunks_mut(8).enumerate() {
-            let mut seed = Vec::with_capacity(pin.len() + salt.len() + member_did.len() + 8);
-            seed.extend_from_slice(b"qualia.sanctuary.argon2id.hkdf.v1|");
-            seed.extend_from_slice(pin.as_bytes());
-            seed.extend_from_slice(salt);
-            seed.extend_from_slice(member_did.as_bytes());
-            seed.push(i as u8);
-            let h = q_hash_bytes(&seed);
-            chunk.copy_from_slice(&h.to_le_bytes());
-        }
+        hkdf_sha256(salt, &master, member_did.as_bytes(), &mut out);
         out
     }
 
@@ -107,23 +130,14 @@ impl FamilyHouseholdStewardship {
         co_signer_guardian_did: Option<u64>,
         requires_full_legal_capacity: bool,
     ) -> bool {
-        let Some((_, role, _)) = self
-            .members
-            .iter()
-            .find(|(did, _, _)| *did == actor_did_hash)
+        let Some((_, role, _)) = self.members.iter().find(|(did, _, _)| *did == actor_did_hash)
         else {
             return false;
         };
         match *role {
             FamilyMemberRole::AdultStewardGuardian => true,
-            FamilyMemberRole::SupportedDependentOrInfant {
-                guardian_did_hash, ..
-            } => {
-                if !requires_full_legal_capacity {
-                    true // Child-safe sandbox activity
-                } else {
-                    co_signer_guardian_did == Some(guardian_did_hash)
-                }
+            FamilyMemberRole::SupportedDependentOrInfant { guardian_did_hash, .. } => {
+                !requires_full_legal_capacity || co_signer_guardian_did == Some(guardian_did_hash)
             }
         }
     }
@@ -165,15 +179,15 @@ impl CooperativeQuorumEngine {
 
     /// Byzantine Fault Tolerance bound $f = \lfloor(n - 1) / 3\rfloor$.
     pub const fn bft_fault_tolerance(&self) -> u8 {
-        if self.steward_count == 0 {
-            0
-        } else {
-            (self.steward_count - 1) / 3
-        }
+        if self.steward_count == 0 { 0 } else { (self.steward_count - 1) / 3 }
     }
 
     /// Enqueue a privileged server mutation into the 32-slot `SuspendedTransactionQueue`.
-    pub fn propose_mutation(&mut self, tx_id_hash: u64, mutation_quin: NQuin) -> Result<usize, &'static str> {
+    pub fn propose_mutation(
+        &mut self,
+        tx_id_hash: u64,
+        mutation_quin: NQuin,
+    ) -> Result<usize, &'static str> {
         for (idx, slot) in self.queue.iter_mut().enumerate() {
             if slot.is_none() {
                 *slot = Some(SuspendedQuorumTx {
@@ -207,25 +221,16 @@ impl CooperativeQuorumEngine {
         else {
             return Err("Signer is not an authorized co-steward");
         };
-        let tx = self
-            .queue
-            .get_mut(slot_idx)
-            .and_then(|s| s.as_mut())
-            .ok_or("Transaction slot empty")?;
+        let tx = self.queue.get_mut(slot_idx).and_then(|s| s.as_mut()).ok_or("Transaction slot empty")?;
 
         if approve {
             tx.approvals_mask |= 1u32 << steward_bit;
         } else {
             tx.explicit_denials_mask |= 1u32 << steward_bit;
             tx.paraconsistent_review_flagged = true;
-            // Emit a paraconsistent conflict retention NQuin (OP_PARACONSISTENT_REVIEW = 0x32)
             let conflict_quin = NQuin::new(
                 tx.tx_id_hash,
-                pack_predicate(
-                    "https://ns.webcivics.net/illocution#RequiresHumanReview",
-                    OP_PARACONSISTENT_REVIEW,
-                    false,
-                ),
+                pack_predicate("https://ns.webcivics.net/illocution#RequiresHumanReview", OP_PARACONSISTENT_REVIEW, false),
                 steward_did & 0x0FFF_FFFF_FFFF_FFFF,
                 pack_context(steward_did, SensitivityClass::Restricted),
                 pack_metadata(PermissiveRoutingLane::EnforceBilateralMicroCommons, 1, 0),
@@ -233,9 +238,7 @@ impl CooperativeQuorumEngine {
             return Ok((false, Some(conflict_quin)));
         }
 
-        if tx.explicit_denials_mask == 0
-            && (tx.approvals_mask.count_ones() as u8) >= tx.required_m
-        {
+        if tx.explicit_denials_mask == 0 && (tx.approvals_mask.count_ones() as u8) >= tx.required_m {
             tx.executed = true;
             return Ok((true, Some(tx.mutation_quin)));
         }
@@ -255,9 +258,7 @@ pub struct GovernedAgentDelegation {
 
 impl GovernedAgentDelegation {
     pub fn mint_authorization_quin(&self, current_epoch: u32) -> Result<NQuin, &'static str> {
-        if self.principal_natural_agent_did == 0
-            || self.principal_natural_agent_did == self.instrument_agent_did
-        {
+        if self.principal_natural_agent_did == 0 || self.principal_natural_agent_did == self.instrument_agent_did {
             return Err("Instrument agent must be authorized by a distinct NaturalAgent principal");
         }
         if current_epoch > self.expiry_epoch {
@@ -265,18 +266,10 @@ impl GovernedAgentDelegation {
         }
         Ok(NQuin::new(
             self.instrument_agent_did,
-            pack_predicate(
-                "https://ns.webcivics.net/accountability#delegatedByNaturalAgent",
-                OP_AUTHORIZATION_GRANT,
-                false,
-            ),
+            pack_predicate("https://ns.webcivics.net/accountability#delegatedByNaturalAgent", OP_AUTHORIZATION_GRANT, false),
             self.principal_natural_agent_did & 0x0FFF_FFFF_FFFF_FFFF,
             pack_context(self.principal_natural_agent_did, SensitivityClass::Restricted),
-            pack_metadata(
-                PermissiveRoutingLane::EnforceBilateralMicroCommons,
-                1,
-                self.expiry_epoch,
-            ),
+            pack_metadata(PermissiveRoutingLane::EnforceBilateralMicroCommons, 1, self.expiry_epoch),
         ))
     }
 }
@@ -284,54 +277,60 @@ impl GovernedAgentDelegation {
 /// Client-Encrypted `.q42j` Sanctuary Keep Off-Site Backup with M-of-N Shamir Secret Share Recovery.
 #[derive(Clone, Debug)]
 pub struct EncryptedSanctuaryBackup {
+    pub nonce: [u8; 12],
     pub ciphertext_q42j: Vec<u8>,
+    pub aead_tag: [u8; 16],
+    pub plaintext_sha256: [u8; 32],
     pub plaintext_crc32c: u32,
+    pub threshold_m: u8,
 }
 
 impl EncryptedSanctuaryBackup {
-    /// Encrypt local Sanctuary Keep (`.q42j`) bytes client-side on `:8080` before sending to `:4242` VPS
-    /// and split the 32-byte key into 2-of-2 XOR Shamir shares for CLI recovery (`qualia-cli vault recover`).
+    /// Encrypt local Sanctuary Keep (`.q42j`) bytes client-side on `:8080` using RFC 8439 ChaCha20-Poly1305
+    /// and split the 32-byte key into M-of-N (`2-of-3` default) $\text{GF}(2^8)$ Shamir secret shares.
     pub fn create_client_encrypted_backup(
         plaintext_q42j: &[u8],
         lane_key: &[u8; 32],
-        mask_share_a: &[u8; 32],
-    ) -> (Self, [u8; 32]) {
-        let mut share_b = [0u8; 32];
-        for i in 0..32 {
-            share_b[i] = lane_key[i] ^ mask_share_a[i];
-        }
-        let ciphertext_q42j: Vec<u8> = plaintext_q42j
-            .iter()
-            .enumerate()
-            .map(|(i, &b)| b ^ lane_key[i % 32])
-            .collect();
-        (
-            Self {
-                ciphertext_q42j,
-                plaintext_crc32c: crc32c_bytes(plaintext_q42j),
-            },
-            share_b,
-        )
+        shamir_seed: &[u8; 32],
+    ) -> (Self, Vec<(u8, [u8; 32])>) {
+        Self::create_m_of_n_encrypted_backup(plaintext_q42j, lane_key, 2, 3, shamir_seed)
+            .expect("valid 2-of-3 Shamir threshold parameters")
     }
 
-    /// Recover the Sanctuary Keep `.q42j` journal locally using the reconstructed secret shares.
-    pub fn recover_with_shares(
-        &self,
-        share_a: &[u8; 32],
-        share_b: &[u8; 32],
-    ) -> Result<Vec<u8>, &'static str> {
-        let mut key = [0u8; 32];
-        for i in 0..32 {
-            key[i] = share_a[i] ^ share_b[i];
-        }
-        let plaintext: Vec<u8> = self
-            .ciphertext_q42j
-            .iter()
-            .enumerate()
-            .map(|(i, &b)| b ^ key[i % 32])
-            .collect();
-        if crc32c_bytes(&plaintext) != self.plaintext_crc32c {
-            return Err("Shamir recovery CRC-32C mismatch: invalid shares");
+    /// Encrypt local Sanctuary Keep (`.q42j`) bytes with configurable `threshold_m`-of-`total_n` $\text{GF}(2^8)$ Shamir shares.
+    pub fn create_m_of_n_encrypted_backup(
+        plaintext_q42j: &[u8],
+        lane_key: &[u8; 32],
+        threshold_m: u8,
+        total_n: u8,
+        shamir_seed: &[u8; 32],
+    ) -> Result<(Self, Vec<(u8, [u8; 32])>), &'static str> {
+        let shares = shamir_split_gf256(lane_key, threshold_m, total_n, shamir_seed)?;
+        let nonce_digest = hmac_sha256(shamir_seed, plaintext_q42j);
+        let mut nonce = [0u8; 12];
+        nonce.copy_from_slice(&nonce_digest[0..12]);
+        let aad = b"webizen-host:sanctuary-keep:q42j:v1";
+        let (ciphertext_q42j, aead_tag) = chacha20_poly1305_seal(lane_key, &nonce, aad, plaintext_q42j);
+        Ok((
+            Self {
+                nonce,
+                ciphertext_q42j,
+                aead_tag,
+                plaintext_sha256: sha256(plaintext_q42j),
+                plaintext_crc32c: crc32c_bytes(plaintext_q42j),
+                threshold_m,
+            },
+            shares,
+        ))
+    }
+
+    /// Recover the Sanctuary Keep `.q42j` journal locally using at least `threshold_m` $\text{GF}(2^8)$ Shamir shares.
+    pub fn recover_with_shares(&self, shares: &[(u8, [u8; 32])]) -> Result<Vec<u8>, &'static str> {
+        let key = shamir_reconstruct_gf256(shares, self.threshold_m)?;
+        let aad = b"webizen-host:sanctuary-keep:q42j:v1";
+        let plaintext = chacha20_poly1305_open(&key, &self.nonce, aad, &self.ciphertext_q42j, &self.aead_tag)?;
+        if sha256(&plaintext) != self.plaintext_sha256 || crc32c_bytes(&plaintext) != self.plaintext_crc32c {
+            return Err("Shamir recovery digest mismatch: invalid shares");
         }
         Ok(plaintext)
     }
@@ -349,108 +348,82 @@ mod tests {
 
     #[test]
     fn wp05_who_plane_collapse_detector_and_sanctuary_keep_backup() {
-        let mut reg = WhoAndHandlePlaneRegistry::new(
-            &["did:qi:alice", "did:qi:bob"],
-            "ns.webcivics.net",
-        );
+        let mut reg = WhoAndHandlePlaneRegistry::new(&["did:qi:alice", "did:qi:bob"], "ns.webcivics.net");
         assert!(reg.trigger_domain_collapse_detector("ns.webcivics.net"));
-        assert_eq!(
-            reg.attached_handles[0].1,
-            HandleLocatorState::HeldOrClosedByRegistrar
-        );
-        // Who-Plane identities and Sanctuary Keep volumes remain 100% intact!
+        assert_eq!(reg.attached_handles[0].1, HandleLocatorState::HeldOrClosedByRegistrar);
         assert_eq!(reg.natural_agents_did_qi.len(), 2);
-        assert!(reg.sanctuary_keep_volumes_intact);
-        assert!(reg.qresolve_overlay_reachable);
+        assert!(reg.sanctuary_keep_volumes_intact && reg.qresolve_overlay_reachable);
 
-        // Test Sanctuary Keep client-encrypted .q42j backup + Shamir recovery
-        let key = FamilyHouseholdStewardship::derive_member_lane_key(
-            "9876",
-            b"family_salt_2026",
-            "did:qi:alice",
+        // Verify configurable PBKDF2-HMAC-SHA256 310,000-iteration production policy & determinism
+        assert_eq!(KeyDerivationPolicy::InteractiveTest4096.iterations(), 4_096);
+        assert_eq!(KeyDerivationPolicy::RetailProduction310000.iterations(), 310_000);
+        let key = FamilyHouseholdStewardship::derive_member_lane_key("9876", b"family_salt_2026", "did:qi:alice");
+        let key_repeat = FamilyHouseholdStewardship::derive_member_lane_key_with_policy(
+            "9876", b"family_salt_2026", "did:qi:alice", KeyDerivationPolicy::InteractiveTest4096,
         );
-        let share_a = [0x5Au8; 32];
+        assert_eq!(key, key_repeat);
+        let prod_key = FamilyHouseholdStewardship::derive_member_lane_key_with_policy(
+            "9876", b"family_salt_2026", "did:qi:alice", KeyDerivationPolicy::RetailProduction310000,
+        );
+        assert_ne!(prod_key, key);
+
+        let shamir_seed = [0x5Au8; 32];
         let secret_journal = b"Sanctuary Keep private freedom-of-thought journal segment";
-        let (backup, share_b) =
-            EncryptedSanctuaryBackup::create_client_encrypted_backup(secret_journal, &key, &share_a);
+        let (mut backup, shares) =
+            EncryptedSanctuaryBackup::create_client_encrypted_backup(secret_journal, &key, &shamir_seed);
+        assert_eq!(shares.len(), 3);
         assert_ne!(backup.ciphertext_q42j, secret_journal);
-        let recovered = backup.recover_with_shares(&share_a, &share_b).unwrap();
-        assert_eq!(recovered, secret_journal);
+        assert_eq!(backup.recover_with_shares(&[shares[0], shares[2]]).unwrap(), secret_journal);
+        assert_eq!(backup.recover_with_shares(&[shares[1], shares[2]]).unwrap(), secret_journal);
+        assert!(backup.recover_with_shares(&[shares[0]]).is_err());
+
+        backup.ciphertext_q42j[0] ^= 0x01;
+        assert!(backup.recover_with_shares(&[shares[0], shares[1]]).is_err());
     }
 
     #[test]
     fn wp05_family_guardianship_cooperative_quorum_and_governed_agents() {
-        // 1. Family Guardianship & Infant/Dependent legal capacity protection
         let parent_did = q_hash("did:qi:parent_steward");
         let infant_did = q_hash("did:qi:infant_child");
         let family = FamilyHouseholdStewardship {
             family_domain: "holborn.family.au".to_string(),
             members: vec![
                 (parent_did, FamilyMemberRole::AdultStewardGuardian, [1u8; 32]),
-                (
-                    infant_did,
-                    FamilyMemberRole::SupportedDependentOrInfant {
-                        guardian_did_hash: parent_did,
-                        age_years: 1,
-                    },
-                    [2u8; 32],
-                ),
+                (infant_did, FamilyMemberRole::SupportedDependentOrInfant { guardian_did_hash: parent_did, age_years: 1 }, [2u8; 32]),
             ],
         };
         assert!(!family.authorize_action(infant_did, None, true));
         assert!(family.authorize_action(infant_did, Some(parent_did), true));
 
-        // 2. 2-of-3 Cooperative Steward Quorum with Paraconsistent Dissent Retention
-        let s1 = q_hash("did:qi:steward_1");
-        let s2 = q_hash("did:qi:steward_2");
-        let s3 = q_hash("did:qi:steward_3");
+        let (s1, s2, s3) = (q_hash("did:qi:steward_1"), q_hash("did:qi:steward_2"), q_hash("did:qi:steward_3"));
         let mut coop = CooperativeQuorumEngine::new(&[s1, s2, s3], 2);
         let mut_quin = NQuin::new(q_hash("dns:update"), 0x10, 1, s1, 0);
         let slot = coop.propose_mutation(q_hash("tx:1"), mut_quin).unwrap();
-
-        let (exec1, _) = coop.sign_or_dissent(slot, s1, true).unwrap();
-        assert!(!exec1);
+        assert!(!coop.sign_or_dissent(slot, s1, true).unwrap().0);
         let (exec2, executed_q) = coop.sign_or_dissent(slot, s2, true).unwrap();
-        assert!(exec2);
-        assert_eq!(executed_q.unwrap(), mut_quin);
+        assert!(exec2 && executed_q == Some(mut_quin));
 
-        // Paraconsistent dissent test on second proposal
         let slot2 = coop.propose_mutation(q_hash("tx:2"), mut_quin).unwrap();
         let (exec_dissent, review_quin) = coop.sign_or_dissent(slot2, s3, false).unwrap();
-        assert!(!exec_dissent);
-        assert_eq!(review_quin.unwrap().opcode(), OP_PARACONSISTENT_REVIEW);
+        assert!(!exec_dissent && review_quin.unwrap().opcode() == OP_PARACONSISTENT_REVIEW);
 
-        // 3. Governed Agent ZCAP-LD Delegation
         let delegation = GovernedAgentDelegation {
             principal_natural_agent_did: s1,
             instrument_agent_did: q_hash("did:q42:agent:ontology_curator_bot"),
             allowed_opcode: OP_AUTHORIZATION_GRANT,
             expiry_epoch: 1_000,
         };
-        let auth_q = delegation.mint_authorization_quin(500).unwrap();
-        assert_eq!(auth_q.opcode(), OP_AUTHORIZATION_GRANT);
+        assert_eq!(delegation.mint_authorization_quin(500).unwrap().opcode(), OP_AUTHORIZATION_GRANT);
 
-        // 4. Social-Web / P2P Resource Delegation Permits & Priority-Based Budget Shedding
-        let mut compute_pool =
-            HostResourceBudgetPool::new(DelegatedResourceKind::Compute, 1_000);
+        let mut compute_pool = HostResourceBudgetPool::new(DelegatedResourceKind::Compute, 1_000);
         let mut p2_commons_permit = DelegatedResourcePermit::issue(
-            "did:qi:host_steward",
-            "did:qi:federated_peer_bob",
-            DelegatedResourceKind::Compute,
-            DelegationPriorityTier::P2FederatedCommonsPeer, // max 80% host utilization
-            900,
-            2030,
+            "did:qi:host_steward", "did:qi:federated_peer_bob", DelegatedResourceKind::Compute,
+            DelegationPriorityTier::P2FederatedCommonsPeer, 900, 2030,
         );
         let mut p0_family_permit = DelegatedResourcePermit::issue(
-            "did:qi:host_steward",
-            "did:qi:family_member_alice",
-            DelegatedResourceKind::Compute,
-            DelegationPriorityTier::P0GuardianshipAndEmergency, // max 100% host utilization
-            500,
-            2030,
+            "did:qi:host_steward", "did:qi:family_member_alice", DelegatedResourceKind::Compute,
+            DelegationPriorityTier::P0GuardianshipAndEmergency, 500, 2030,
         );
-
-        // Consume 750 / 1000 units (75% <= 80% P2 ceiling) -> Admitted!
         assert_eq!(
             compute_pool.evaluate_and_consume_zero_heap(&mut p2_commons_permit, 750, 2026),
             ResourceDelegationVerdict::Admitted {
@@ -459,8 +432,6 @@ mod tests {
                 priority_tier: DelegationPriorityTier::P2FederatedCommonsPeer,
             }
         );
-
-        // Next 100 units from P2 peer would push host pool to 85% (> 80% P2 ceiling) -> Shed!
         assert_eq!(
             compute_pool.evaluate_and_consume_zero_heap(&mut p2_commons_permit, 100, 2026),
             ResourceDelegationVerdict::ShedByHostBudgetPriorityRule {
@@ -468,8 +439,6 @@ mod tests {
                 tier_ceiling_pct: 80,
             }
         );
-
-        // Meanwhile P0 Family/Emergency permit is still admitted even at 95% host utilization!
         assert_eq!(
             compute_pool.evaluate_and_consume_zero_heap(&mut p0_family_permit, 200, 2026),
             ResourceDelegationVerdict::Admitted {

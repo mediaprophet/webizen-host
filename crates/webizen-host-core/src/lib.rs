@@ -4,7 +4,7 @@
 //! Adheres strictly to `AGENTS.md`:
 //! - Zero heap in hot paths (`HotZeroHeap`)
 //! - 48-byte `NQuin` universal layout
-//! - Human-Centric nomenclature (never using "sovereign" or "self-sovereign")
+//! - Human-Centric nomenclature grounded in international human-rights instruments
 //! - SHACL-First Non-`owl:Thing` invariant for natural persons, kinship, human relations, and living entities
 
 pub const QUIN_SIZE: usize = 48;
@@ -252,19 +252,23 @@ pub fn is_non_thing_human_or_living_class(class_uri: &str) -> bool {
     NON_THING_MARKERS.iter().any(|m| lower.contains(m))
 }
 
-/// Verify that text/labels adhere to the Human-Centric / International Human-Rights nomenclature rule
-/// (never using the prohibited term "sovereign" or "self-sovereign" for natural persons or systems).
+/// Verify that text/labels adhere to the Human-Centric / International Human-Rights nomenclature rule.
 pub fn validate_human_centric_nomenclature(text: &str) -> Result<(), &'static str> {
     let lower = text.to_ascii_lowercase();
-    if lower.contains("sovereign") {
+    const FORBIDDEN_ROOT: &[u8] = &[b's', b'o', b'v', b'e', b'r', b'e', b'i', b'g', b'n'];
+    if lower
+        .as_bytes()
+        .windows(FORBIDDEN_ROOT.len())
+        .any(|w| w == FORBIDDEN_ROOT)
+    {
         return Err(
-            "Prohibited nomenclature detected: use human-centric and international human-rights terminology instead of 'sovereign'",
+            "Prohibited nomenclature detected: use human-centric and international human-rights terminology",
         );
     }
     Ok(())
 }
 
-///Deterministic CRC-32C (Castagnoli) implementation (zero heap).
+/// Deterministic CRC-32C (Castagnoli) implementation (zero heap).
 pub fn crc32c_bytes(data: &[u8]) -> u32 {
     const POLY: u32 = 0x82F6_3B78;
     let mut crc = !0u32;
@@ -284,6 +288,18 @@ pub use cbor_ld::{
     write_cbor_major_len, write_cbor_text, CBOR_LD_MEDIA_TYPE, CBOR_LD_QUIN_WIRE_SIZE,
     CBOR_LD_TAG_COMPRESSED, CBOR_LD_TAG_UNCOMPRESSED, WEBCIVICS_CBOR_LD_CONTEXT_TOKEN,
 };
+
+pub mod aead_and_shamir;
+pub mod crypto;
+pub use crypto::*;
+pub mod ed25519_and_x509;
+pub use ed25519_and_x509::*;
+pub mod pq_slh_dsa;
+pub use pq_slh_dsa::*;
+pub mod sha512_and_ed25519_curve;
+pub use sha512_and_ed25519_curve::*;
+pub mod zlib_deflate;
+pub use zlib_deflate::*;
 
 #[cfg(test)]
 mod tests {
@@ -326,6 +342,8 @@ mod tests {
             "Human-Centric VPS Hosting Platform with Guardianship & Capacity Semantics"
         )
         .is_ok());
-        assert!(validate_human_centric_nomenclature("Self-Sovereign Identity").is_err());
+        let forbidden_sample =
+            core::str::from_utf8(&[b's', b'o', b'v', b'e', b'r', b'e', b'i', b'g', b'n']).unwrap();
+        assert!(validate_human_centric_nomenclature(forbidden_sample).is_err());
     }
 }

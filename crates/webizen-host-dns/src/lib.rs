@@ -21,10 +21,15 @@ pub const DNS_RING_CAPACITY: usize = 256;
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum DnsRrType {
     A = 1,
-    AAAA = 28,
+    NS = 2,
+    CNAME = 5,
+    SOA = 6,
+    MX = 15,
     TXT = 16,
-    HTTPS = 65,
+    AAAA = 28,
     TLSA = 52,
+    HTTPS = 65,
+    CAA = 257,
     DID = 65280,
 }
 
@@ -48,6 +53,8 @@ pub struct DnsQueryContext {
 pub struct NQuinDnsZoneRing {
     slots: [NQuin; DNS_RING_CAPACITY],
     occupied: [bool; DNS_RING_CAPACITY],
+    custom_rdata: [[u8; 128]; DNS_RING_CAPACITY],
+    custom_rdata_len: [u8; DNS_RING_CAPACITY],
     forbidden_jurisdictions: [u64; 8],
     forbidden_count: usize,
 }
@@ -70,6 +77,8 @@ impl NQuinDnsZoneRing {
                 parity: 0,
             }; DNS_RING_CAPACITY],
             occupied: [false; DNS_RING_CAPACITY],
+            custom_rdata: [[0u8; 128]; DNS_RING_CAPACITY],
+            custom_rdata_len: [0u8; DNS_RING_CAPACITY],
             forbidden_jurisdictions: [0; 8],
             forbidden_count: 0,
         }
@@ -100,6 +109,31 @@ impl NQuinDnsZoneRing {
         ttl_seconds: u32,
         lamport_clock: u32,
     ) -> NQuin {
+        self.upsert_record_with_rdata(
+            domain,
+            rr_type,
+            packed_object,
+            &[],
+            zone_did_hash,
+            sensitivity,
+            ttl_seconds,
+            lamport_clock,
+        )
+    }
+
+    /// Insert an authoritative DNS record with up to 128 bytes of custom inline RDATA (`TXT`, `CNAME`, `NS`, `MX`, `CAA`).
+    #[allow(clippy::too_many_arguments)]
+    pub fn upsert_record_with_rdata(
+        &mut self,
+        domain: &str,
+        rr_type: DnsRrType,
+        packed_object: u64,
+        custom_rdata: &[u8],
+        zone_did_hash: u64,
+        sensitivity: SensitivityClass,
+        ttl_seconds: u32,
+        lamport_clock: u32,
+    ) -> NQuin {
         let key = Self::domain_rr_key(domain, rr_type);
         let pred = ((rr_type as u64) << 8) | (OP_PERMIT as u64);
         let ctx = pack_context(zone_did_hash, sensitivity);
@@ -115,6 +149,10 @@ impl NQuinDnsZoneRing {
             if !self.occupied[idx] || self.slots[idx].subject == key {
                 self.slots[idx] = quin;
                 self.occupied[idx] = true;
+                let copy_len = custom_rdata.len().min(128);
+                self.custom_rdata[idx] = [0u8; 128];
+                self.custom_rdata[idx][..copy_len].copy_from_slice(&custom_rdata[..copy_len]);
+                self.custom_rdata_len[idx] = copy_len as u8;
                 break;
             }
             idx = (idx + 1) & (DNS_RING_CAPACITY - 1);
@@ -130,41 +168,51 @@ impl NQuinDnsZoneRing {
         rr_type: DnsRrType,
         query_ctx: &DnsQueryContext,
     ) -> (DnsRcode, Option<NQuin>) {
-        // 1. Deontic jurisdiction check (OP_FORBID = 0x12)
+        let (rc, q, _) = self.resolve_with_rdata_zero_heap(domain, rr_type, query_ctx);
+        (rc, q)
+    }
+
+    /// $O(1)$ zero-heap lookup returning `(DnsRcode, Option<NQuin>, custom_rdata_slice)`.
+    #[inline]
+    pub fn resolve_with_rdata_zero_heap(
+        &self,
+        domain: &str,
+        rr_type: DnsRrType,
+        query_ctx: &DnsQueryContext,
+    ) -> (DnsRcode, Option<NQuin>, &[u8]) {
         for i in 0..self.forbidden_count {
             if self.forbidden_jurisdictions[i] == query_ctx.requester_jurisdiction_hash {
-                return (DnsRcode::RefusedByDeonticPolicy, None);
+                return (DnsRcode::RefusedByDeonticPolicy, None, &[]);
             }
         }
 
-        // 2. O(1) probe in the 48-byte NQuin ring
         let key = Self::domain_rr_key(domain, rr_type);
         let mut idx = (key as usize) & (DNS_RING_CAPACITY - 1);
         for _ in 0..DNS_RING_CAPACITY {
             if !self.occupied[idx] {
-                return (DnsRcode::NxDomain, None);
+                return (DnsRcode::NxDomain, None, &[]);
             }
             let q = self.slots[idx];
             if q.subject == key && q.verify_parity() {
                 if q.opcode() == OP_FORBID {
-                    return (DnsRcode::RefusedByDeonticPolicy, None);
+                    return (DnsRcode::RefusedByDeonticPolicy, None, &[]);
                 }
-                // 3. Consent-Gated Split-Horizon DNS check
+                let rdata_len = (self.custom_rdata_len[idx] as usize).min(128);
+                let rdata = &self.custom_rdata[idx][..rdata_len];
                 match q.sensitivity() {
-                    SensitivityClass::Public => return (DnsRcode::NoError, Some(q)),
+                    SensitivityClass::Public => return (DnsRcode::NoError, Some(q), rdata),
                     SensitivityClass::Restricted | SensitivityClass::Classified => {
                         if query_ctx.has_valid_dni_cookie || query_ctx.has_webizen_id_tls_session {
-                            return (DnsRcode::NoError, Some(q));
+                            return (DnsRcode::NoError, Some(q), rdata);
                         } else {
-                            // Hide private family/device endpoints from public scanners
-                            return (DnsRcode::NxDomain, None);
+                            return (DnsRcode::NxDomain, None, &[]);
                         }
                     }
                 }
             }
             idx = (idx + 1) & (DNS_RING_CAPACITY - 1);
         }
-        (DnsRcode::NxDomain, None)
+        (DnsRcode::NxDomain, None, &[])
     }
 }
 
@@ -303,3 +351,11 @@ mod tests {
         assert!(receipt.ml_kem_768_handshake_completed);
     }
 }
+
+pub mod acme_tls;
+pub mod rdata_codec;
+pub mod wire_dns;
+pub use acme_tls::*;
+pub use rdata_codec::*;
+pub use wire_dns::*;
+

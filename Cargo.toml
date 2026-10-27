@@ -19,6 +19,7 @@ authors = ["Timothy Charles Holborn <timothy.holborn@gmail.com>"]
 license = "CC-BY-NC-ND-4.0"
 
 [workspace.dependencies]
+vibe = { path = "../qualiaDB/crates/vibe" }
 webizen-host-core = { path = "crates/webizen-host-core" }
 webizen-host-ingest = { path = "crates/webizen-host-ingest" }
 webizen-host-namespace = { path = "crates/webizen-host-namespace" }

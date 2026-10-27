@@ -332,9 +332,46 @@ impl TurnkeyVpsInstaller {
     }
 }
 
+pub mod auth_and_session;
+pub use auth_and_session::*;
+
+pub mod solid_ipfs_webseed;
+pub use solid_ipfs_webseed::*;
+
 pub mod git_forge;
 pub use git_forge::{
     GitCiStatus, GitIssue, GitPullRequest, GitRepoVisibility, GitRepository,
+};
+
+pub mod git_smart_http;
+pub use git_smart_http::{
+    build_info_refs_advertisement, decode_pkt_lines, encode_pkt_flush, encode_pkt_line,
+    handle_git_receive_pack_push, GitPushReceiveReceipt, OnDiskGitRepoStore, GENESIS_SHA256_OID,
+};
+
+pub mod smtp_mail;
+pub use smtp_mail::{
+    canonicalize_body_relaxed, handle_smtp_stream, list_spooled_messages, sign_email_dkim,
+    spawn_smtp_server, synthesize_mail_dns_records, verify_email_dkim, DomainMailDnsRecords,
+    MaildirSpool, SmtpWireServer, SpoolDeliveryReceipt,
+};
+
+impl SmtpWireServer {
+    /// Spawn a live TCP RFC 5321 SMTP listener on `127.0.0.1:0`.
+    pub fn spawn_smtp_server(
+        mail_root: std::path::PathBuf,
+        journal_path: std::path::PathBuf,
+        aliases: Vec<RelationshipScopedMailAlias>,
+        max_sessions: usize,
+    ) -> std::io::Result<(std::net::SocketAddr, std::thread::JoinHandle<usize>)> {
+        spawn_smtp_server(mail_root, journal_path, aliases, max_sessions)
+    }
+}
+
+pub mod vps_deployment;
+pub use vps_deployment::{
+    write_linux_vps_deployment_bundle, HostPersistentState, VpsDeploymentBundle,
+    VpsDeploymentPaths,
 };
 
 pub mod persona_ui;
@@ -348,88 +385,71 @@ pub use vibescript_web_server::{
     VibeHttpResponse, VibeWebServerEngine, ZeroJavaScriptAuditReceipt, STRICT_ZERO_JS_CSP,
 };
 
+pub mod http_routes_ext;
+pub use http_routes_ext::*;
+pub mod vibe_3d_studio;
+pub use vibe_3d_studio::*;
+pub mod vibe_3d_gltf_export;
+pub use vibe_3d_gltf_export::*;
+pub mod vibe_ux_toolkit;
+pub use vibe_ux_toolkit::*;
+pub mod live_ssr_hydration;
+pub use live_ssr_hydration::*;
+pub mod jmap_maildir_api;
+pub use jmap_maildir_api::*;
+pub mod smtp_outbound_client;
+pub use smtp_outbound_client::*;
+pub mod retail_setup_wizard;
+pub use retail_setup_wizard::*;
+pub mod vps_backup_and_git_pack;
+pub use vps_backup_and_git_pack::*;
+pub mod multi_protocol_supervisor;
+pub use multi_protocol_supervisor::*;
+pub mod stewardship_and_qapp_routes;
+pub use stewardship_and_qapp_routes::*;
+pub mod git_forge_and_qcdn_routes;
+pub use git_forge_and_qcdn_routes::*;
+
+pub mod http_daemon;
+pub use http_daemon::WebizenHostDaemon;
+
 #[cfg(test)]
 mod tests {
     use super::*;
 
     #[test]
     fn wp08_relationship_scoped_mail_and_turnkey_installer_end_to_end() {
-        // 1A. Canonical `bob@alice.tld` relationship-centric email address
         let bob_at_alice = RelationshipScopedMailAlias::issue_counterparty_address(
-            "alice.tld",
-            "did:qi:alice",
-            "bob",
-            "did:qi:bob",
-            "alice@bob.tld",
-            "Trusted-Peer-Relationship",
+            "alice.tld", "did:qi:alice", "bob", "did:qi:bob", "alice@bob.tld", "Trusted-Peer-Relationship",
         );
         assert_eq!(bob_at_alice.alias_address, "bob@alice.tld");
-        assert_eq!(
-            bob_at_alice.evaluate_inbound_envelope("alice@bob.tld", Some("did:qi:bob")),
-            MailGateVerdict::DeliverToRelationshipThread
-        );
-        // Any third-party spammer trying to email `bob@alice.tld` is blocked & pinpoints `bob` as the leak source!
+        assert_eq!(bob_at_alice.evaluate_inbound_envelope("alice@bob.tld", Some("did:qi:bob")), MailGateVerdict::DeliverToRelationshipThread);
         assert_eq!(
             bob_at_alice.evaluate_inbound_envelope("spam@marketing-broker.com", None),
-            MailGateVerdict::RejectedUnauthorizedSender {
-                target_alias: "bob@alice.tld".to_string(),
-                pinpointed_relationship: "bob".to_string(),
-            }
+            MailGateVerdict::RejectedUnauthorizedSender { target_alias: "bob@alice.tld".to_string(), pinpointed_relationship: "bob".to_string() }
         );
-
-        // 1B. Programmable / Programmatic Alias (`receipts@alice.tld`)
         let receipts_hook = RelationshipScopedMailAlias::issue_programmable_alias(
-            "alice.tld",
-            "did:qi:alice",
-            "receipts",
-            "ParseInvoiceToQ42FinanceVolume",
+            "alice.tld", "did:qi:alice", "receipts", "ParseInvoiceToQ42FinanceVolume",
             "{ ?mail mail:hasAttachment ?pdf } => { ?pdf finance:ingestIntoQ42 true } .",
         );
         assert_eq!(receipts_hook.alias_address, "receipts@alice.tld");
-        assert!(matches!(
-            receipts_hook.evaluate_inbound_envelope("billing@power-coop.au", None),
-            MailGateVerdict::ExecuteProgrammableHook { .. }
-        ));
-
-        // 1C. Token-masked relationship alias blocks unknown senders/spammers and admits the whitelisted contact
-        let alias = RelationshipScopedMailAlias::issue(
-            "civics.au",
-            "did:qi:tim_holborn",
-            "did:qi:colleague_jane",
-            "WebCivics-HumanRights-WorkingGroup",
-        );
+        assert!(matches!(receipts_hook.evaluate_inbound_envelope("billing@power-coop.au", None), MailGateVerdict::ExecuteProgrammableHook { .. }));
+        let alias = RelationshipScopedMailAlias::issue("civics.au", "did:qi:tim_holborn", "did:qi:colleague_jane", "WebCivics-HumanRights-WorkingGroup");
         assert!(alias.authorize_inbound_sender("did:qi:colleague_jane"));
         assert!(!alias.authorize_inbound_sender("did:qi:unsolicited_spammer"));
         assert!(alias.to_whitelist_quin().verify_parity());
-
-        // 2. Turnkey VPS Installer provisions all 6 Life Domains, hard cost cap, and multi-chain/exchange hub
         let cfg = TurnkeyHostConfig {
             profile: HostDeploymentProfile::StandaloneHumanCentricVps,
             primary_domain: "ns.webcivics.net".to_string(),
             steward_did_qi: "did:qi:tim_holborn".to_string(),
-            hard_monthly_egress_cap_bytes: 1_500 * 1024 * 1024 * 1024, // 1.5 TiB
+            hard_monthly_egress_cap_bytes: 1_500 * 1024 * 1024 * 1024,
             permitted_overage_cents: 0,
-            enabled_blockchain_rails: vec![
-                BlockchainRail::ECashXec,
-                BlockchainRail::XrplLedger,
-                BlockchainRail::EvmL2StablecoinUsdc,
-                BlockchainRail::BitcoinLightning,
-                BlockchainRail::IlpStreamSpsp,
-                BlockchainRail::QualiaPqNative,
-            ],
-            enabled_exchange_sites: vec![
-                "KrakenSpot".to_string(),
-                "CoinbaseConvert".to_string(),
-                "NonCustodialDexAggregator".to_string(),
-            ],
+            enabled_blockchain_rails: vec![BlockchainRail::ECashXec, BlockchainRail::XrplLedger, BlockchainRail::EvmL2StablecoinUsdc, BlockchainRail::BitcoinLightning, BlockchainRail::IlpStreamSpsp, BlockchainRail::QualiaPqNative],
+            enabled_exchange_sites: vec!["KrakenSpot".to_string(), "CoinbaseConvert".to_string(), "NonCustodialDexAggregator".to_string()],
             seed_ontology_repos: vec!["https://github.com/WebCivics/ns".to_string()],
         };
-
         let receipt = TurnkeyVpsInstaller::provision(&cfg).unwrap();
         assert_eq!(receipt.life_domains_mounted.len(), 6);
-        assert!(receipt.church_and_state_vaults_separated);
-        assert!(receipt.hard_cost_cap_locked_zero_overage);
-        assert!(receipt.multi_chain_and_exchange_hub_ready);
-        assert!(receipt.acceptance_quin.verify_parity());
+        assert!(receipt.church_and_state_vaults_separated && receipt.hard_cost_cap_locked_zero_overage && receipt.multi_chain_and_exchange_hub_ready && receipt.acceptance_quin.verify_parity());
     }
 }

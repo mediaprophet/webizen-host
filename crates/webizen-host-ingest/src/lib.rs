@@ -11,9 +11,8 @@ use std::collections::BTreeMap;
 use webizen_host_core::{
     crc32c_bytes, generate_60bit_token, is_non_thing_human_or_living_class, pack_context,
     pack_metadata, pack_predicate, parse_did_q42, q_hash, NQuin, PermissiveRoutingLane,
-    SensitivityClass, DEFAULT_COLD_ARENA_BUDGET_BYTES, INLINE_TAG_BOOLEAN, INLINE_TAG_INTEGER,
-    OP_FORBID, OP_OBLIGATE, OP_PERMIT, QUINS_PER_SUPERBLOCK, QUIN_SIZE, SUPERBLOCK_HEADER_BYTES,
-    SUPERBLOCK_SIZE,
+    SensitivityClass, DEFAULT_COLD_ARENA_BUDGET_BYTES, OP_FORBID, OP_OBLIGATE, OP_PERMIT,
+    QUINS_PER_SUPERBLOCK, QUIN_SIZE, SUPERBLOCK_HEADER_BYTES, SUPERBLOCK_SIZE,
 };
 
 pub const FLAG_BLOCKS_LZ4: u16 = 0x0001;
@@ -124,15 +123,30 @@ impl Q42LexV4 {
         Ok(token)
     }
 
-    /// Resolve a 60-bit token or full 64-bit `q_hash` back to its full IRI or literal string.
+    /// Resolve a 60-bit token, 55-bit shifted predicate hash, or full 64-bit `q_hash` back to its full IRI or literal string.
     pub fn resolve(&self, hash_or_token: u64) -> Option<String> {
         let masked = hash_or_token & 0x0FFF_FFFF_FFFF_FFFF;
-        let (ns_id, local) = self.entries.get(&masked)?;
+        let (ns_id, local) = self.entries.get(&masked).or_else(|| {
+            let masked55 = hash_or_token & 0x007F_FFFF_FFFF_FFFF;
+            self.entries.iter().find_map(|(&tok, entry)| {
+                if (tok & 0x007F_FFFF_FFFF_FFFF) == masked55 {
+                    Some(entry)
+                } else {
+                    None
+                }
+            })
+        })?;
         let prefix = self
             .namespaces
             .iter()
             .find_map(|(k, &v)| if v == *ns_id { Some(k.as_str()) } else { None })?;
         Some(format!("{prefix}{local}"))
+    }
+
+    /// Resolve a packed 64-bit `NQuin` predicate (`DEFEATER_BIT` + 55-bit `q_hash` << 8 + 8-bit opcode) to its full IRI.
+    pub fn resolve_predicate(&self, packed_predicate: u64) -> Option<String> {
+        self.resolve((packed_predicate & !webizen_host_core::DEFEATER_BIT) >> 8)
+            .or_else(|| self.resolve(packed_predicate))
     }
 }
 
@@ -288,21 +302,24 @@ impl StreamingOntologyCompiler {
         let mut quarantined_triples = 0usize;
         let context_hash = pack_context(q_hash(&envelope.repo_url), SensitivityClass::Public);
 
+        let mut parser = TurtleN3Parser::new();
         for &chunk in chunks {
-            for raw_line in chunk.lines() {
-                let line = raw_line.trim();
-                if line.is_empty() || line.starts_with('#') || line.starts_with("@prefix") {
-                    continue;
-                }
-                let Some((s_raw, p_raw, o_raw, arrow)) = Self::parse_statement(line) else {
-                    quarantined_triples += 1;
-                    continue;
-                };
+            let statements = if parser.prefixes.len() > 5 {
+                parser.parse_chunk(chunk)
+            } else {
+                let expanded = TurtleN3Parser::expand_chunk(chunk);
+                let _ = parser.parse_chunk(chunk);
+                expanded
+            };
+            for stmt in statements {
+                let s_raw = stmt.subject.as_str();
+                let p_raw = stmt.predicate.as_str();
+                let o_lexical = stmt.object.lexical_str();
 
                 // Enforce SHACL-First Non-Thing Uplift:
                 // Natural persons, kinship, dependents, and living entities must never subclass owl:Thing.
                 if (p_raw.contains("subClassOf") || p_raw == "rdfs:subClassOf")
-                    && (o_raw.contains("owl#Thing") || o_raw == "owl:Thing")
+                    && (o_lexical.contains("owl#Thing") || o_lexical == "owl:Thing")
                     && is_non_thing_human_or_living_class(s_raw)
                 {
                     let shape_ttl = format!(
@@ -321,6 +338,7 @@ impl StreamingOntologyCompiler {
                     uplifted_shacl_shapes.push(shape_ttl);
                     // Rewrite object from owl:Thing to rdfs:Class
                     let _ = lexicon.intern(s_raw, &mut remaining_budget)?;
+                    let _ = lexicon.intern("http://www.w3.org/2000/01/rdf-schema#subClassOf", &mut remaining_budget)?;
                     let _ = lexicon.intern("http://www.w3.org/2000/01/rdf-schema#Class", &mut remaining_budget)?;
                     let s_hash = q_hash(s_raw);
                     let pred = pack_predicate("http://www.w3.org/2000/01/rdf-schema#subClassOf", 0x01, false);
@@ -338,22 +356,19 @@ impl StreamingOntologyCompiler {
                 let _ = lexicon.intern(s_raw, &mut remaining_budget)?;
                 let _ = lexicon.intern(p_raw, &mut remaining_budget)?;
 
-                let (opcode, is_defeater) = match arrow {
+                let (opcode, is_defeater) = match stmt.rule_arrow.as_deref() {
                     Some("^>") => (OP_FORBID, true),
                     Some("~>") => (OP_PERMIT, false),
-                    Some("=>") => (OP_OBLIGATE, false),
+                    Some("=>") | Some("-o") => (OP_OBLIGATE, false),
                     _ => (0x01, false),
                 };
 
-                let obj_val = if let Some(ptr) = parse_did_q42(o_raw) {
-                    ptr
-                } else if let Ok(int_val) = o_raw.parse::<u64>() {
-                    INLINE_TAG_INTEGER | (int_val & 0x0FFF_FFFF_FFFF_FFFF)
-                } else if o_raw == "true" || o_raw == "false" {
-                    INLINE_TAG_BOOLEAN | u64::from(o_raw == "true")
-                } else {
-                    lexicon.intern(o_raw, &mut remaining_budget)?
-                };
+                if let Some(term) = stmt.object.internable_term() {
+                    if parse_did_q42(term).is_none() {
+                        let _ = lexicon.intern(term, &mut remaining_budget)?;
+                    }
+                }
+                let obj_val = stmt.object.to_quin_object_u64();
 
                 let quin = NQuin::new(
                     q_hash(s_raw),
@@ -365,6 +380,7 @@ impl StreamingOntologyCompiler {
                 Self::push_quin(&mut quins, &mut remaining_budget, quin)?;
             }
         }
+        quarantined_triples += parser.quarantined_statements;
 
         // Sort by object for BIDX range indexing
         quins.sort_by_key(|q| (q.object, q.subject, q.predicate));
@@ -447,26 +463,12 @@ impl StreamingOntologyCompiler {
         quins.push(quin);
         Ok(())
     }
-
-    fn parse_statement(line: &str) -> Option<(&str, &str, &str, Option<&str>)> {
-        let trimmed = line.trim_end_matches('.').trim();
-        for arrow in ["^>", "~>", "=>", "-o"] {
-            if let Some((lhs, rhs)) = trimmed.split_once(arrow) {
-                let s = lhs.trim().trim_matches(|c| c == '{' || c == '}' || c == '<' || c == '>').trim();
-                let o = rhs.trim().trim_matches(|c| c == '{' || c == '}' || c == '<' || c == '>').trim();
-                if !s.is_empty() && !o.is_empty() {
-                    return Some((s, "https://ns.webcivics.net/n3#implies", o, Some(arrow)));
-                }
-            }
-        }
-        let mut parts = trimmed.split_whitespace();
-        let s = parts.next()?.trim_matches(|c| c == '<' || c == '>');
-        let p = parts.next()?.trim_matches(|c| c == '<' || c == '>');
-        let o = parts.next()?.trim_matches(|c| c == '<' || c == '>' || c == '"');
-        Some((s, p, o, None))
-    }
 }
 
+pub mod disk_store;
+pub use disk_store::*;
+pub mod turtle_n3_lexer;
+pub use turtle_n3_lexer::*;
 pub mod network_dedup_and_jobs;
 pub use network_dedup_and_jobs::{
     evaluate_network_candidates_before_rebuild, verify_network_candidate,
@@ -475,155 +477,4 @@ pub use network_dedup_and_jobs::{
 };
 
 #[cfg(test)]
-mod tests {
-    use super::*;
-    use webizen_host_core::DEFEATER_BIT;
-
-    #[test]
-    fn wp01_streaming_compiler_uplifts_non_thing_and_packs_superblocks_and_hmc() {
-        let compiler = StreamingOntologyCompiler::default();
-        let envelope = SourceEnvelope {
-            repo_url: "https://github.com/WebCivics/ns".to_string(),
-            commit_hash: "a1b2c3d4e5f6".to_string(),
-            spdx_license: "SocialPermissiveCommons".to_string(),
-            production_cost_cents: 100_000,
-            roi_cap_percent: 200,
-        };
-
-        let chunk_1 = r#"
-            <https://ns.webcivics.net/agent#NaturalAgent> <http://www.w3.org/2000/01/rdf-schema#subClassOf> <http://www.w3.org/2002/07/owl#Thing> .
-            <https://ns.webcivics.net/care#InfantDependent> <http://www.w3.org/2000/01/rdf-schema#subClassOf> <http://www.w3.org/2002/07/owl#Thing> .
-            <https://ns.webcivics.net/hr#UDHR_Article1> <https://ns.webcivics.net/deontic#protects> <https://ns.webcivics.net/agent#NaturalAgent> .
-            { <https://ns.webcivics.net/guardianship#EmergencyStop> } ^> { <https://ns.webcivics.net/deontic#DefaultRule> } .
-        "#;
-
-        let prose_bytes = b"All human beings are born free and equal in dignity and rights.";
-        let vol = compiler
-            .compile_chunks(
-                &envelope,
-                &[chunk_1],
-                &[(
-                    "udhr/article-1.txt",
-                    "text/plain",
-                    Some("en"),
-                    "human_rights_instrument",
-                    prose_bytes,
-                )],
-            )
-            .expect("compilation succeeds within 256 MiB cold budget");
-
-        // 1. Verify FLAG_PAYLOAD_CATALOGUE (0x0080) is set
-        assert_ne!(vol.flags & FLAG_PAYLOAD_CATALOGUE, 0);
-        assert_eq!(vol.payload_catalogue.len(), 1);
-
-        // 2. Verify SHACL-First Non-Thing Uplift triggered for NaturalAgent & InfantDependent
-        assert_eq!(vol.uplifted_shacl_shapes.len(), 2);
-        assert!(vol.uplifted_shacl_shapes[0].contains("NaturalAgentShape"));
-        assert!(vol.uplifted_shacl_shapes[1].contains("InfantDependentShape"));
-
-        // 3. Verify 40 KiB SuperBlock zero-heap decoding & defeater (^>) bit
-        let sb = vol.get_superblock_slice(0).unwrap();
-        let mut decoded = [NQuin::default(); 16];
-        let count = CompiledQ42Volume::decode_superblock_into(sb, &mut decoded);
-        assert_eq!(count, 4);
-        assert!(decoded[..count].iter().all(|q| q.verify_parity()));
-        assert!(decoded[..count]
-            .iter()
-            .any(|q| (q.predicate & DEFEATER_BIT) != 0 && q.opcode() == OP_FORBID));
-
-        // 4. Verify QBDL .hmc 64-byte aligned bundle packaging & slice verification
-        let hmc = QbdlHmcBundle::build(&[
-            ("volumes/webcivics_ns.q42", "q42_superblock", sb),
-            ("prose/udhr_article1.txt", "normative_prose", prose_bytes),
-        ]);
-        let extracted = hmc.extract_verified_slice("prose/udhr_article1.txt").unwrap();
-        assert_eq!(extracted, prose_bytes);
-    }
-
-    #[test]
-    fn wp01_compiler_fails_closed_on_budget_exhaustion() {
-        let compiler = StreamingOntologyCompiler {
-            mode: IngestMode::Complete,
-            cold_budget_bytes: 32, // intentionally tiny budget
-        };
-        let envelope = SourceEnvelope {
-            repo_url: "https://github.com/WebCivics/ns".to_string(),
-            commit_hash: "deadbeef".to_string(),
-            spdx_license: "SocialPermissiveCommons".to_string(),
-            production_cost_cents: 0,
-            roi_cap_percent: 0,
-        };
-        let res = compiler.compile_chunks(
-            &envelope,
-            &["<https://ns.webcivics.net/a> <https://ns.webcivics.net/b> <https://ns.webcivics.net/c> ."],
-            &[],
-        );
-        assert!(matches!(res, Err(IngestError::BudgetExhausted { .. })));
-    }
-
-    #[test]
-    fn wp01_network_verify_before_rebuild_and_incremental_over_time_job() {
-        let compiler = StreamingOntologyCompiler::default();
-        let envelope = SourceEnvelope {
-            repo_url: "https://github.com/WebCivics/ns".to_string(),
-            commit_hash: "20261026abcdef".to_string(),
-            spdx_license: "SocialPermissiveCommons".to_string(),
-            production_cost_cents: 50_000,
-            roi_cap_percent: 100,
-        };
-
-        // 1. Run an incremental over-time job (1 chunk per background tick)
-        let mut job = IncrementalCompilationJob::new(
-            envelope.clone(),
-            vec![
-                "<https://ns.webcivics.net/hr#UDHR> <https://ns.webcivics.net/hr#affirm> <https://ns.webcivics.net/hr#HumanDignity> .".to_string(),
-                "<https://ns.webcivics.net/agent#NaturalAgent> <https://ns.webcivics.net/hr#hasCapacity> <https://ns.webcivics.net/hr#LegalCapacity> .".to_string(),
-            ],
-            1,
-        );
-        assert_eq!(job.progress(), (0, 2));
-        assert!(!job.step_next_batch(&compiler).unwrap());
-        assert_eq!(job.progress(), (1, 2));
-        assert!(job.step_next_batch(&compiler).unwrap());
-        assert!(job.is_complete());
-
-        let valid_vol = job.completed_volume.unwrap();
-        let sb_crcs: Vec<u32> = valid_vol
-            .superblocks
-            .iter()
-            .map(|sb| crc32c_bytes(sb))
-            .collect();
-
-        // 2. If a valid compiled version already exists on the network, DO NOT re-process!
-        let good_candidate = NetworkOntologyCandidate {
-            peer_id_or_gateway: "https://peer1.civics.au:4242".to_string(),
-            repo_url: envelope.repo_url.clone(),
-            commit_hash: envelope.commit_hash.clone(),
-            ipfs_cid: "bafkreiwebcivicsns2026".to_string(),
-            webtorrent_info_hash: "0123456789abcdef0123456789abcdef01234567".to_string(),
-            advertised_superblock_crcs: sb_crcs,
-            has_complete_q42lex_v4: true,
-            volume: valid_vol.clone(),
-        };
-        let decision =
-            evaluate_network_candidates_before_rebuild(&envelope, &[good_candidate.clone()]);
-        assert_eq!(
-            decision,
-            VerifyBeforeRebuildDecision::AdoptExistingNetworkArtifact {
-                adopted_from_peer: "https://peer1.civics.au:4242".to_string(),
-                ipfs_cid: "bafkreiwebcivicsns2026".to_string(),
-                webtorrent_info_hash: "0123456789abcdef0123456789abcdef01234567".to_string(),
-            }
-        );
-
-        // 3. If the network version is corrupted (bad SuperBlock CRC), quarantine it and require rebuild!
-        let mut bad_candidate = good_candidate;
-        bad_candidate.advertised_superblock_crcs[0] ^= 0xDEAD_BEEF;
-        let rebuild_decision =
-            evaluate_network_candidates_before_rebuild(&envelope, &[bad_candidate]);
-        assert!(matches!(
-            rebuild_decision,
-            VerifyBeforeRebuildDecision::RebuildRequired { .. }
-        ));
-    }
-}
+mod tests;

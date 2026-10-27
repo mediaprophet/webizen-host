@@ -10,7 +10,9 @@
 //! 3. **Zero-Trust Chunk Verification**: Any peer can serve cached slices; corrupted chunks are
 //!    rejected before arena admission.
 
-use webizen_host_core::{crc32c_bytes, q_hash, q_hash_bytes};
+use webizen_host_core::{
+    crc32c_bytes, hmac_sha256, q_hash, q_hash_bytes, sha256, sha256_merkle_root,
+};
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum QcdnSwarmTier {
@@ -27,6 +29,7 @@ pub struct SignedChunkIndexEntry {
     pub byte_length: u32,
     pub expected_crc32c: u32,
     pub expected_content_hash: u64,
+    pub expected_sha256: [u8; 32],
     pub micropayment_weight_micro_cents: u64,
 }
 
@@ -36,6 +39,8 @@ pub struct SignedRootIndex {
     pub asset_uri: String,
     pub publisher_did_hash: u64,
     pub chunks: Vec<SignedChunkIndexEntry>,
+    pub merkle_root_sha256: [u8; 32],
+    pub publisher_hmac_signature: [u8; 32],
     pub signature_tag: u64,
 }
 
@@ -54,6 +59,7 @@ impl SignedRootIndex {
         for (seq, slice) in raw_chunks.iter().enumerate() {
             let crc = crc32c_bytes(slice);
             let chash = q_hash_bytes(slice);
+            let digest_sha256 = sha256(slice);
             sig_acc = sig_acc.rotate_left(13) ^ chash ^ (crc as u64);
             chunks.push(SignedChunkIndexEntry {
                 chunk_seq: seq as u32,
@@ -61,15 +67,22 @@ impl SignedRootIndex {
                 byte_length: slice.len() as u32,
                 expected_crc32c: crc,
                 expected_content_hash: chash,
+                expected_sha256: digest_sha256,
                 micropayment_weight_micro_cents: weight_per_chunk_micro_cents,
             });
             offset += slice.len() as u64;
         }
 
+        let merkle_root_sha256 = sha256_merkle_root(raw_chunks);
+        let publisher_hmac_signature =
+            hmac_sha256(publisher_did.as_bytes(), &merkle_root_sha256);
+
         Self {
             asset_uri: asset_uri.to_string(),
             publisher_did_hash,
             chunks,
+            merkle_root_sha256,
+            publisher_hmac_signature,
             signature_tag: sig_acc,
         }
     }
@@ -89,6 +102,9 @@ impl SignedRootIndex {
         }
         if q_hash_bytes(peer_bytes) != entry.expected_content_hash {
             return Err("peer chunk content hash mismatch");
+        }
+        if sha256(peer_bytes) != entry.expected_sha256 {
+            return Err("peer chunk SHA-256 verification failed (tampered bytes rejected)");
         }
         Ok(entry.micropayment_weight_micro_cents)
     }
